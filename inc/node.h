@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 
 #define MAX_INTR 20
-#define IP_LEN 15
+#define IP_LEN 16
 #define PORT_LEN 6
 
 typedef struct __Node Node;

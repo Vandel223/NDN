@@ -23,6 +23,8 @@ EXEC = $(BIN_DIR)/ndn
 
 # Default target
 all: $(EXEC)
+gdb: CFLAGS += -g
+gdb: $(EXEC)
 
 # Link object files to create executable
 $(EXEC): $(OBJS)

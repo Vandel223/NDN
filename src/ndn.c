@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <errno.h>
 
 #include "../inc/node.h"
 #include "../inc/ndn.h"
@@ -16,7 +17,7 @@
  * 
  * @param msg The error message to be printed.
  */
-static void error(const char *msg) {
+static void error_main(const char *msg) {
     perror(msg);
     exit(1);
 }
@@ -86,25 +87,25 @@ int main(int argc, char *argv[]) {
     int select_cntr;
 
     if (argc != 4 && argc != 6) {
-        error(  "ERROR: Número de argumentos inválido"
+        error_main(  "ERROR: Número de argumentos inválido"
                 "( ./ndn <cache> <IP> <TCP> |./ndn <cache> <IP> <TCP> <regIP> <regUDP> )"
              );
     }
 
     // check if cache is a number
     if ((cache_size = atoi(argv[1])) == 0) {
-        error("ERROR: Argumento inválido <cache> é nulo ou inválido");
+        error_main("ERROR: Argumento inválido <cache> é nulo ou inválido");
     }
 
     // check if IP is a valid IPv4 address
     if (inet_pton(AF_INET, argv[2], local_ip) != 1) {
-        error("ERROR: Argumento inválido <IP> não é um endereço IPv4 válido");
+        error_main("ERROR: Argumento inválido <IP> não é um endereço IPv4 válido");
     }
     strncpy(local_ip, argv[2], IP_LEN);
 
     // check if TCP is a valid port number
     if (atoi(argv[3]) > 65535 || atoi(argv[3]) < 1024) {
-        error("ERROR: Argumento inválido <TCP> não é um número de porta válido");
+        error_main("ERROR: Argumento inválido <TCP> não é um número de porta válido");
     }
     strncpy(local_port, argv[3], PORT_LEN);
 
@@ -134,9 +135,9 @@ int main(int argc, char *argv[]) {
             } else if (strncmp(stdin_buffer, "direct join ", 12) == 0 || strncmp(stdin_buffer, "dj ", 3) == 0) {
                 // direct join
 
-                char *connectIP = strtok(stdin_buffer, " ");
-                connectIP = strtok(NULL, " ");
-                char *connectTCP = strtok(NULL, " ");
+                char connectIP[IP_LEN];
+                char connectTCP[PORT_LEN];
+                sscanf(stdin_buffer, "%*s %s %s", connectIP, connectTCP);
 
                 if (atoi(connectTCP) > 65535 || atoi(connectTCP) < 1024) {
                     fprintf(stderr, "ERROR: Argumento inválido <connectTCP> não é um número de porta válido");
@@ -153,22 +154,24 @@ int main(int argc, char *argv[]) {
 
                 in_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                 if (in_tcpsock_fd == -1) {
-                    error("ERROR: socket falhou");
+                    error_main("ERROR: socket falhou");
                 }
 
                 errcode = getaddrinfo(NULL, local_port, &hints, &res);
                 if (errcode != 0) {
-                    error("ERROR: getaddrinfo falhou");
+                    error_main("ERROR: getaddrinfo falhou");
                 }
 
                 errcode = bind(in_tcpsock_fd, res->ai_addr, res->ai_addrlen);
                 if (errcode == -1) {
-                    error("ERROR: bind falhou");
+                    error_main("ERROR: bind falhou");
                 }
+
+                freeaddrinfo(res);
 
                 errcode = listen(in_tcpsock_fd, 5);
                 if (errcode == -1) {
-                    error("ERROR: listen falhou");
+                    error_main("ERROR: listen falhou");
                 }
 
                 node = node_create();
@@ -188,10 +191,11 @@ int main(int argc, char *argv[]) {
                     node_set_safe(node, own_addr);
                     
                 } else {
+
                     // connect to node
                     out_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                     if (out_tcpsock_fd == -1) {
-                        error("ERROR: socket falhou");
+                        error_main("ERROR: socket falhou");
                     }
 
                     memset(&hints, 0, sizeof(hints));
@@ -200,13 +204,15 @@ int main(int argc, char *argv[]) {
 
                     errcode = getaddrinfo(connectIP, connectTCP, &hints, &res);
                     if (errcode != 0) {
-                        error("ERROR: getaddrinfo falhou");
+                        error_main("ERROR: getaddrinfo falhou");
                     }
 
                     errcode = connect(out_tcpsock_fd, res->ai_addr, res->ai_addrlen);
                     if (errcode == -1) {
-                        error("ERROR: connect falhou");
+                        error_main("ERROR: connect falhou");
                     }
+
+                    freeaddrinfo(res);
 
                     FD_SET(out_tcpsock_fd, &set_fd);
                     if (out_tcpsock_fd > max_fd) {
@@ -268,11 +274,11 @@ int main(int argc, char *argv[]) {
 
             newsockfd = accept(in_tcpsock_fd, NULL, NULL);
             if (newsockfd == -1) {
-                error("ERROR: accept falhou");
+                error_main("ERROR: accept falhou");
             }
 
             if (num_intr == MAX_INTR) {
-                error("ERROR: Número máximo de nós internos atingido");
+                error_main("ERROR: Número máximo de nós internos atingido");
             }
 
             intr_fd[num_intr] = newsockfd;
