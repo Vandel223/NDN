@@ -62,14 +62,12 @@ int main(int argc, char *argv[]) {
     Node *node;
     Node_Addr own_addr;
 
-    struct timeval tv;
-
     char local_ip[IP_LEN];
     char local_port[PORT_LEN];
     int cache_size;
 
     // TCP
-    int in_tcpsock_fd, out_tcpsock_fd, newsockfd;
+    int in_tcpsock_fd = 0, out_tcpsock_fd = 0, newsockfd = 0;
     char tcp_buffer[TCP_BUFF_SIZE];
 
     int intr_fd[MAX_INTR];
@@ -109,16 +107,22 @@ int main(int argc, char *argv[]) {
     }
     strncpy(local_port, argv[3], PORT_LEN);
 
-    // set select(...) to watch stdin, tcpsock_fd and udpsock_fd
-    FD_ZERO(&set_fd);
-    FD_SET(STDIN, &set_fd);
-
     print_help();
 
-    tv.tv_sec = 1;
-    tv.tv_usec = 0;
-
     while (1) {
+
+        // set select(...) to watch stdin
+        FD_ZERO(&set_fd);
+        FD_SET(STDIN, &set_fd);
+
+        if (in_tcpsock_fd)
+            FD_SET(in_tcpsock_fd, &set_fd);
+
+        if (out_tcpsock_fd)
+            FD_SET(out_tcpsock_fd, &set_fd);
+
+        for (int i = 0; i < num_intr; i++)
+            FD_SET(intr_fd[i], &set_fd);
 
         select_cntr = select(max_fd + 1, &set_fd, NULL, NULL, NULL);
 
@@ -130,6 +134,8 @@ int main(int argc, char *argv[]) {
             memset(stdin_buffer, 0, STDIN_BUFF_SIZE); // acho que dá para tirar isto
             fgets(stdin_buffer, STDIN_BUFF_SIZE, stdin);
 
+            printf("%s\n", stdin_buffer);
+
             if (strncmp(stdin_buffer, "join ", 4) == 0 || strncmp(stdin_buffer, "j ", 1) == 0) {
                 // join
             } else if (strncmp(stdin_buffer, "direct join ", 12) == 0 || strncmp(stdin_buffer, "dj ", 3) == 0) {
@@ -139,13 +145,13 @@ int main(int argc, char *argv[]) {
                 char connectTCP[PORT_LEN];
                 sscanf(stdin_buffer, "%*s %s %s", connectIP, connectTCP);
 
+                struct addrinfo hints, *res;
+                int errcode;
+
                 if (atoi(connectTCP) > 65535 || atoi(connectTCP) < 1024) {
                     fprintf(stderr, "ERROR: Argumento inválido <connectTCP> não é um número de porta válido");
                     continue;
                 };
-
-                struct addrinfo hints, *res;
-                int errcode;
 
                 memset(&hints, 0, sizeof(hints));
                 hints.ai_family = AF_INET;          // IPv4
@@ -167,12 +173,12 @@ int main(int argc, char *argv[]) {
                     error_main("ERROR: bind falhou");
                 }
 
-                freeaddrinfo(res);
-
                 errcode = listen(in_tcpsock_fd, 5);
                 if (errcode == -1) {
                     error_main("ERROR: listen falhou");
                 }
+
+                freeaddrinfo(res);
 
                 node = node_create();
 
@@ -191,8 +197,8 @@ int main(int argc, char *argv[]) {
                     node_set_safe(node, own_addr);
                     
                 } else {
-
                     // connect to node
+
                     out_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                     if (out_tcpsock_fd == -1) {
                         error_main("ERROR: socket falhou");
@@ -228,7 +234,11 @@ int main(int argc, char *argv[]) {
                     snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", local_ip, local_port);
                     write(out_tcpsock_fd, tcp_buffer, strlen(tcp_buffer));
                     
-                    read(out_tcpsock_fd, tcp_buffer, TCP_BUFF_SIZE);
+                    int n = read(out_tcpsock_fd, tcp_buffer, TCP_BUFF_SIZE);
+                    fprintf(stdout, "n: %d\n", n);
+                    if (n == -1) {
+                        error_main("ERROR: read falhou");
+                    }
 
                     Node_Addr safe_addr;
                     sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
@@ -270,6 +280,7 @@ int main(int argc, char *argv[]) {
         }
         // TCP IN
         if (FD_ISSET(in_tcpsock_fd, &set_fd)) {
+
             select_cntr--;
 
             newsockfd = accept(in_tcpsock_fd, NULL, NULL);
@@ -284,12 +295,23 @@ int main(int argc, char *argv[]) {
             intr_fd[num_intr] = newsockfd;
             num_intr++;
 
-            FD_SET(newsockfd, &set_fd);
-            if (newsockfd > max_fd) {
-                max_fd = newsockfd;
+            FD_SET(intr_fd[num_intr - 1], &set_fd);
+            if (intr_fd[num_intr - 1] > max_fd) {
+                max_fd = intr_fd[num_intr - 1];
             }
 
-            printf("Novo vizinho interno\n");
+            read(intr_fd[num_intr - 1], tcp_buffer, TCP_BUFF_SIZE);
+            if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
+                // ENTRY
+                Node_Addr intr_addr;
+                sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
+
+                node_incr_intr(node, intr_addr);
+
+                sprintf(tcp_buffer, "SAFE %s %s\n", local_ip, local_port);
+                write(intr_fd[num_intr - 1], tcp_buffer, strlen(tcp_buffer));
+
+            }
 
             if (select_cntr == 0) {
                 continue;
@@ -299,7 +321,23 @@ int main(int argc, char *argv[]) {
 
         // TCP OUT
         if (FD_ISSET(out_tcpsock_fd, &set_fd)) {
+            
+            select_cntr--;
 
+            read(out_tcpsock_fd, tcp_buffer, TCP_BUFF_SIZE);
+            if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
+                // ENTRY
+            } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
+                // SAFE
+                Node_Addr safe_addr;
+                sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
+            } else {
+                fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho externo\n");
+            }
+
+            if (select_cntr == 0) {
+                continue;
+            }
         }
 
         // UDP
@@ -315,9 +353,9 @@ int main(int argc, char *argv[]) {
                 read(intr_fd[i], tcp_buffer, TCP_BUFF_SIZE);
                 if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
                     // ENTRY
-                    char *intr_ip = strtok(tcp_buffer, " ");
-                    intr_ip = strtok(NULL, " ");
-                    char *intr_port = strtok(NULL, " ");
+                    char intr_ip[IP_LEN];
+                    char intr_port[PORT_LEN];
+                    sscanf(tcp_buffer, "%*s %s %s\n", intr_ip, intr_port);
 
                     Node_Addr intr_addr;
                     strncpy(intr_addr.ip, intr_ip, IP_LEN);
@@ -334,6 +372,10 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho interno\n");
                 }
 
+            }
+
+            if (select_cntr == 0) {
+                break;
             }
         }
 
