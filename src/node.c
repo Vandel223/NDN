@@ -42,6 +42,14 @@ void node_set_ext(Node *node, const Node_Addr ext) {
     strncpy(node->ext.port, ext.port, PORT_LEN);
 }
 
+Node_Addr node_get_ext(Node *node) {
+    return node->ext;
+}
+
+int is_node_ext_own(Node *node) {
+    return (strncmp(node->ext.ip, node->safe.ip, IP_LEN) == 0 && strncmp(node->ext.port, node->safe.port, PORT_LEN) == 0);
+}
+
 void node_set_safe(Node *node, const Node_Addr safe) {
     // talvez copiar o conteudo de safe para node->safe
     strncpy(node->safe.ip, safe.ip, IP_LEN);

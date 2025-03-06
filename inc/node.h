@@ -36,6 +36,28 @@ Node *node_create(void);
 void node_set_ext(Node *node, const Node_Addr ext);
 
 /**
+ * @brief Retrieves the external address of a given node.
+ *
+ * This function returns the external address associated with the specified node.
+ *
+ * @param node A pointer to the Node structure.
+ * @param ext The external address to be retrieved.
+ * @return The external address of the node.
+ */
+Node_Addr node_get_ext(Node *node);
+
+/**
+ * @brief Checks if the external node information matches the safe node information.
+ *
+ * This function compares the IP address and port of the external node information
+ * with the safe node information to determine if they are the same.
+ *
+ * @param node A pointer to the Node structure containing the external and safe node information.
+ * @return int Returns 1 if the external node information matches the safe node information, otherwise returns 0.
+ */
+int is_node_ext_own(Node *node);
+
+/**
  * @brief Sets the safe address of the node.
  * 
  * @param node Pointer to the Node.

@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
     char local_ip[IP_LEN];
     char local_port[PORT_LEN];
     int cache_size;
+    int abvr = 0;
 
     // TCP
     int in_tcpsock_fd = 0, out_tcpsock_fd = 0, newsockfd = 0;
@@ -115,14 +116,22 @@ int main(int argc, char *argv[]) {
         FD_ZERO(&set_fd);
         FD_SET(STDIN, &set_fd);
 
+        max_fd = max(max_fd, STDIN);
+
         if (in_tcpsock_fd)
             FD_SET(in_tcpsock_fd, &set_fd);
 
+        max_fd = max(max_fd, in_tcpsock_fd);
+
         if (out_tcpsock_fd)
             FD_SET(out_tcpsock_fd, &set_fd);
+        
+        max_fd = max(max_fd, out_tcpsock_fd);
 
-        for (int i = 0; i < num_intr; i++)
+        for (int i = 0; i < num_intr; i++) {
             FD_SET(intr_fd[i], &set_fd);
+            max_fd = max(max_fd, intr_fd[i]);
+        }
 
         select_cntr = select(max_fd + 1, &set_fd, NULL, NULL, NULL);
 
@@ -134,16 +143,18 @@ int main(int argc, char *argv[]) {
             memset(stdin_buffer, 0, STDIN_BUFF_SIZE); // acho que dá para tirar isto
             fgets(stdin_buffer, STDIN_BUFF_SIZE, stdin);
 
-            printf("%s\n", stdin_buffer);
-
             if (strncmp(stdin_buffer, "join ", 4) == 0 || strncmp(stdin_buffer, "j ", 1) == 0) {
                 // join
-            } else if (strncmp(stdin_buffer, "direct join ", 12) == 0 || strncmp(stdin_buffer, "dj ", 3) == 0) {
+            } else if ((abvr = 0, strncmp(stdin_buffer, "direct join ", 12) == 0) || (abvr = 1, strncmp(stdin_buffer, "dj ", 3) == 0)) {
                 // direct join
 
                 char connectIP[IP_LEN];
                 char connectTCP[PORT_LEN];
-                sscanf(stdin_buffer, "%*s %s %s", connectIP, connectTCP);
+                if (abvr) {
+                    sscanf(stdin_buffer, "dj %s %s", connectIP, connectTCP);
+                } else {
+                    sscanf(stdin_buffer, "direct join %s %s", connectIP, connectTCP);
+                }
 
                 struct addrinfo hints, *res;
                 int errcode;
@@ -182,11 +193,6 @@ int main(int argc, char *argv[]) {
 
                 node = node_create();
 
-                FD_SET(in_tcpsock_fd, &set_fd);
-                if (in_tcpsock_fd > max_fd) {
-                    max_fd = in_tcpsock_fd;
-                }
-
                 strncpy(own_addr.ip, local_ip, IP_LEN);
                 strncpy(own_addr.port, local_port, PORT_LEN);
 
@@ -195,6 +201,7 @@ int main(int argc, char *argv[]) {
 
                     // set safe as own
                     node_set_safe(node, own_addr);
+                    node_set_ext(node, own_addr);
                     
                 } else {
                     // connect to node
@@ -220,11 +227,6 @@ int main(int argc, char *argv[]) {
 
                     freeaddrinfo(res);
 
-                    FD_SET(out_tcpsock_fd, &set_fd);
-                    if (out_tcpsock_fd > max_fd) {
-                        max_fd = out_tcpsock_fd;
-                    }
-
                     Node_Addr connect_addr;
                     strncpy(connect_addr.ip, connectIP, IP_LEN);
                     strncpy(connect_addr.port, connectTCP, PORT_LEN);
@@ -233,17 +235,8 @@ int main(int argc, char *argv[]) {
 
                     snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", local_ip, local_port);
                     write(out_tcpsock_fd, tcp_buffer, strlen(tcp_buffer));
-                    
-                    int n = read(out_tcpsock_fd, tcp_buffer, TCP_BUFF_SIZE);
-                    fprintf(stdout, "n: %d\n", n);
-                    if (n == -1) {
-                        error_main("ERROR: read falhou");
-                    }
 
-                    Node_Addr safe_addr;
-                    sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
-
-                    node_set_safe(node, safe_addr);
+                    printf("Escreveu: %s\n", tcp_buffer);
                 }
                 
             } else if (strncmp(stdin_buffer, "create", 6) == 0 || strncmp(stdin_buffer, "c", 1) == 0) {
@@ -295,24 +288,6 @@ int main(int argc, char *argv[]) {
             intr_fd[num_intr] = newsockfd;
             num_intr++;
 
-            FD_SET(intr_fd[num_intr - 1], &set_fd);
-            if (intr_fd[num_intr - 1] > max_fd) {
-                max_fd = intr_fd[num_intr - 1];
-            }
-
-            read(intr_fd[num_intr - 1], tcp_buffer, TCP_BUFF_SIZE);
-            if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
-                // ENTRY
-                Node_Addr intr_addr;
-                sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
-
-                node_incr_intr(node, intr_addr);
-
-                sprintf(tcp_buffer, "SAFE %s %s\n", local_ip, local_port);
-                write(intr_fd[num_intr - 1], tcp_buffer, strlen(tcp_buffer));
-
-            }
-
             if (select_cntr == 0) {
                 continue;
             }
@@ -321,16 +296,47 @@ int main(int argc, char *argv[]) {
 
         // TCP OUT
         if (FD_ISSET(out_tcpsock_fd, &set_fd)) {
+
+            int temp, i = 0;
+            int n;
             
             select_cntr--;
 
-            read(out_tcpsock_fd, tcp_buffer, TCP_BUFF_SIZE);
+            do {
+                n = read(out_tcpsock_fd, (char *) &temp, 1);
+                if (n == -1) {
+                    error_main("ERROR: read falhou");
+                }
+
+                tcp_buffer[i] = temp;
+                i++;
+
+                if (temp == '\n')
+                    break;
+
+            } while (1);
+
             if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
                 // ENTRY
+                Node_Addr intr_addr;
+                Node_Addr ext_addr;
+
+                sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
+
+                node_incr_intr(node, intr_addr);
+
+                ext_addr = node_get_ext(node);
+
+                sprintf(tcp_buffer, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                write(intr_fd[newsockfd], tcp_buffer, strlen(tcp_buffer));
+
             } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
                 // SAFE
                 Node_Addr safe_addr;
                 sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
+
+                node_set_safe(node, safe_addr);
+
             } else {
                 fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho externo\n");
             }
@@ -350,33 +356,58 @@ int main(int argc, char *argv[]) {
             if (FD_ISSET(intr_fd[i], &set_fd)) {
                 select_cntr--;
 
-                read(intr_fd[i], tcp_buffer, TCP_BUFF_SIZE);
+                int n = read(intr_fd[i], tcp_buffer, TCP_BUFF_SIZE);
+                if (n == -1) {
+                    error_main("ERROR: read falhou");
+                }
+
                 if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
                     // ENTRY
-                    char intr_ip[IP_LEN];
-                    char intr_port[PORT_LEN];
-                    sscanf(tcp_buffer, "%*s %s %s\n", intr_ip, intr_port);
-
                     Node_Addr intr_addr;
-                    strncpy(intr_addr.ip, intr_ip, IP_LEN);
-                    strncpy(intr_addr.port, intr_port, PORT_LEN);
+                    Node_Addr ext_addr;
+
+                    sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
 
                     node_incr_intr(node, intr_addr);
 
-                    sprintf(tcp_buffer, "SAFE %s %s\n", local_ip, local_port);
-                    write(intr_fd[i], tcp_buffer, strlen(tcp_buffer));
+                    if (is_node_ext_own(node)) {
+                        // ext is own
+                        node_set_ext(node, intr_addr);
+                        ext_addr = node_get_ext(node);
 
+                        sprintf(tcp_buffer, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                        write(intr_fd[i], tcp_buffer, strlen(tcp_buffer));
+
+                        sprintf(tcp_buffer, "ENTRY %s %s\n", local_ip, local_port);
+                        write(intr_fd[i], tcp_buffer, strlen(tcp_buffer));
+
+                    }
+
+                    else {
+                        // ext is not own
+                        ext_addr = node_get_ext(node);
+
+                        sprintf(tcp_buffer, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                        write(intr_fd[newsockfd], tcp_buffer, strlen(tcp_buffer));
+
+                    }
                 } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
                     // SAFE
+                    Node_Addr safe_addr;
+
+                    sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
+
+                    node_set_safe(node, safe_addr);
+
                 } else {
-                    fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho interno\n");
+                        error_main("ERROR: Envio de comando errado por parte da vizinho interno");
+                    }
+
+                if (select_cntr == 0) {
+                    break;
                 }
-
             }
 
-            if (select_cntr == 0) {
-                break;
-            }
         }
 
     }

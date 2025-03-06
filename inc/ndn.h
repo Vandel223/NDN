@@ -21,4 +21,6 @@
 
 #define UDP_PORT 58007
 
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
 #endif
