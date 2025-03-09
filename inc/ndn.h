@@ -16,6 +16,8 @@
 #define UDP_BUFF_SIZE 1024
 #define TCP_BUFF_SIZE 1024
 #define STDIN_BUFF_SIZE 1024
+#define OPTIONS_BUFF_SIZE 1024
+#define MAX_NODES 20
 
 #define STDIN 0
 
