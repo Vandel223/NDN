@@ -59,16 +59,16 @@ void print_help(void) {
 
 int main(int argc, char *argv[]) {
 
+    // own node
     Node *node;
     Node_Addr own_addr;
 
     int cache_size;
-    int abvr = 0;
+    int abvr = 0; // abreviation of commands
 
     // TCP
     int in_tcpsock_fd = 0, out_tcpsock_fd = 0, newsock_fd = 0;
     char tcp_buffer[TCP_BUFF_SIZE];
-
     int intr_fd[MAX_INTR];
     int num_intr = 0;
 
@@ -83,10 +83,12 @@ int main(int argc, char *argv[]) {
     // STDIN
     char stdin_buffer[STDIN_BUFF_SIZE];
 
+    // select
     int max_fd = 0;
     fd_set set_fd;
     int select_cntr;
 
+    // 4 or 6 arguments
     if (argc != 4 && argc != 6) {
         error(  "ERROR: Número de argumentos inválido"
                 "( ./ndn <cache> <IP> <TCP> |./ndn <cache> <IP> <TCP> <regIP> <regUDP> )"
@@ -126,7 +128,7 @@ int main(int argc, char *argv[]) {
     }
 
     else {
-
+        // default
         strncpy(server_addr.ip, "193.136.138.142", 16);
         strncpy(server_addr.port, "59000", 6);
 
@@ -144,18 +146,18 @@ int main(int argc, char *argv[]) {
         // check max descriptor
         max_fd = max(max_fd, STDIN);
 
-        if (in_tcpsock_fd)
+        if (in_tcpsock_fd) {
             // set in_tcpsock_fd in descriptor set
             FD_SET(in_tcpsock_fd, &set_fd);
+            // repeat...
+            max_fd = max(max_fd, in_tcpsock_fd);
+        }
 
-        // repeat...
-        max_fd = max(max_fd, in_tcpsock_fd);
-
-        if (out_tcpsock_fd)
+        if (out_tcpsock_fd) {
             // set out_tcpsock_fd in descriptor set
             FD_SET(out_tcpsock_fd, &set_fd);
-        
-        max_fd = max(max_fd, out_tcpsock_fd);
+            max_fd = max(max_fd, out_tcpsock_fd);
+        }
 
         for (int i = 0; i < num_intr; i++) {
             // set intr_fd[i] in descriptor set
@@ -168,8 +170,9 @@ int main(int argc, char *argv[]) {
         // STDIN
         if (FD_ISSET(STDIN, &set_fd)) {
 
+            // decrement select counter
             select_cntr--;
-
+            // read stdin
             memset(stdin_buffer, 0, STDIN_BUFF_SIZE); // acho que dá para tirar isto
             fgets(stdin_buffer, STDIN_BUFF_SIZE, stdin);
 
@@ -184,13 +187,14 @@ int main(int argc, char *argv[]) {
 
                 if (abvr) {   //tirar o valor da net
                     // abreviation
-                    sscanf(stdin_buffer, "j %s", net);
+                    sscanf(stdin_buffer, "j %3s", net);
                 } else {
                     // no abreviation
-                    sscanf(stdin_buffer, "join %s", net);
+                    sscanf(stdin_buffer, "join %3s", net);
                 }
 
-                udpsock_fd = socket(AF_INET, SOCK_DGRAM, 0);   //UDP socket
+                //UDP socket
+                udpsock_fd = socket(AF_INET, SOCK_DGRAM, 0);
                     if(udpsock_fd == -1) error("ERROR: socket falhou");  //Error
 
                 struct addrinfo hints;
@@ -199,61 +203,56 @@ int main(int argc, char *argv[]) {
                 hints.ai_family = AF_INET;         //IPv4
                 hints.ai_socktype = SOCK_DGRAM;    //UDP socket
 
+                // get address info on node server
                 errcode = getaddrinfo(server_addr.ip, server_addr.port, &hints, &res_udp);
                     if(errcode != 0) error("ERROR: getaddrinfo falhou");    //Error
-
+                // get nodes in net
                 len = snprintf(udp_buffer, UDP_BUFF_SIZE, "NODES %s\n", net);    // mandar as net para o buffer
                 n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
                     if( n == -1)  error("ERROR: sendto falhou");   //Error
-
+                // nodes list
                 n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
                     if (n == -1)  error("ERROR: recvfrom falhou");   //Error
 
+                memset(&hints, 0, sizeof(hints));
+                hints.ai_family = AF_INET;          // IPv4
+                hints.ai_socktype = SOCK_STREAM;    // TCP
+                hints.ai_flags = AI_PASSIVE;        // Server
+
+                // listen TCP socket
+                in_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
+                if (in_tcpsock_fd == -1) {
+                    error("ERROR: socket falhou");
+                }
+                // get own address info
+                errcode = getaddrinfo(NULL, own_addr.port, &hints, &res);
+                if (errcode != 0) {
+                    error("ERROR: getaddrinfo falhou");
+                }
+                // bind TCP socket
+                errcode = bind(in_tcpsock_fd, res->ai_addr, res->ai_addrlen);
+                if (errcode == -1) {
+                    error("ERROR: bind falhou");
+                }
+                // start listening
+                errcode = listen(in_tcpsock_fd, 5);
+                if (errcode == -1) {
+                    error("ERROR: listen falhou");
+                }
+
+                // next '\n'
                 char *tok_udp = strchr(udp_buffer, '\n');
+                // last '\n'
                 char *term_udp = strrchr(udp_buffer, '\n');
 
+                // create own node (address already filled)
                 node = node_create();
 
                 if (tok_udp == term_udp) {
+                    // no nodes in server
                     // set safe as own
                     node_set_safe(node, own_addr);
                     node_set_ext(node, own_addr);
-
-                    // register node
-                    len = snprintf(udp_buffer, UDP_BUFF_SIZE, "REG %s %s %s\n", net, own_addr.ip, own_addr.port); 
-                    n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
-                        if( n == -1)  error("ERROR: sendto falhou");   //Error
-                    n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
-                        if (n == -1)  error("ERROR: recvfrom falhou");   //Error
-                    if (strncmp(udp_buffer, "OKREG", 5) != 0)
-                        error("ERROR: registo de nó no servidor de nós falhou");
-                    else
-                        registered = 1;
-
-                    memset(&hints, 0, sizeof(hints));
-                    hints.ai_family = AF_INET;          // IPv4
-                    hints.ai_socktype = SOCK_STREAM;    // TCP
-                    hints.ai_flags = AI_PASSIVE;        // Server
-
-                    in_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
-                    if (in_tcpsock_fd == -1) {
-                        error("ERROR: socket falhou");
-                    }
-
-                    errcode = getaddrinfo(NULL, own_addr.port, &hints, &res);
-                    if (errcode != 0) {
-                        error("ERROR: getaddrinfo falhou");
-                    }
-    
-                    errcode = bind(in_tcpsock_fd, res->ai_addr, res->ai_addrlen);
-                    if (errcode == -1) {
-                        error("ERROR: bind falhou");
-                    }
-
-                    errcode = listen(in_tcpsock_fd, 5);
-                    if (errcode == -1) {
-                        error("ERROR: listen falhou");
-                    }
                     
                 }
                 
@@ -276,32 +275,8 @@ int main(int argc, char *argv[]) {
                     // get connect IP and TCP
                     sscanf(opt[the_chosen_one], "%s %s", connectIP, connectTCP);
 
-                    memset(&hints, 0, sizeof(hints));
-                    hints.ai_family = AF_INET;          // IPv4
-                    hints.ai_socktype = SOCK_STREAM;    // TCP
-                    hints.ai_flags = AI_PASSIVE;        // Server
-
-                    in_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
-                    if (in_tcpsock_fd == -1) {
-                        error("ERROR: socket falhou");
-                    }
-
-                    errcode = getaddrinfo(NULL, own_addr.port, &hints, &res);
-                    if (errcode != 0) {
-                        error("ERROR: getaddrinfo falhou");
-                    }
-
-                    errcode = bind(in_tcpsock_fd, res->ai_addr, res->ai_addrlen);
-                    if (errcode == -1) {
-                        error("ERROR: bind falhou");
-                    }
-
-                    errcode = listen(in_tcpsock_fd, 5);
-                    if (errcode == -1) {
-                        error("ERROR: listen falhou");
-                    }
-
-                    // connect to node
+                    // connect to external neighbor
+                    // external neighbor TCP socket
                     out_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                     if (out_tcpsock_fd == -1) {
                         error("ERROR: socket falhou");
@@ -311,39 +286,42 @@ int main(int argc, char *argv[]) {
                     hints.ai_family = AF_INET;          // IPv4
                     hints.ai_socktype = SOCK_STREAM;    // TCP
 
+                    // get external neighbor's address info
                     errcode = getaddrinfo(connectIP, connectTCP, &hints, &res);
                     if (errcode != 0) {
                         error("ERROR: getaddrinfo falhou");
                     }
-
+                    // connect to neighbor
                     errcode = connect(out_tcpsock_fd, res->ai_addr, res->ai_addrlen);
                     if (errcode == -1) {
                         error("ERROR: connect falhou");
                     }
 
-                    freeaddrinfo(res);
-
-                    // register node
-                    len = snprintf(udp_buffer, UDP_BUFF_SIZE, "REG %s %s %s\n", net, own_addr.ip, own_addr.port); 
-                    n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
-                        if( n == -1)  error("ERROR: sendto falhou");   //Error
-                    n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
-                        if (n == -1)  error("ERROR: recvfrom falhou");   //Error
-                    if (strncmp(udp_buffer, "OKREG", 5) != 0)
-                        error("ERROR: registo de nó no servidor de nós falhou");
-                    else 
-                        registered = 1;
-
                     Node_Addr connect_addr;
                     strncpy(connect_addr.ip, connectIP, IP_LEN);
                     strncpy(connect_addr.port, connectTCP, PORT_LEN);
 
+                    // set connecting node as external
                     node_set_ext(node, connect_addr);
-
+                    // send ENTRY
                     len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
                     n = write(out_tcpsock_fd, tcp_buffer, len);
                         if (n == -1) exit(1);
                 }
+
+                // register node
+                len = snprintf(udp_buffer, UDP_BUFF_SIZE, "REG %s %s %s\n", net, own_addr.ip, own_addr.port); 
+                n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
+                    if( n == -1)  error("ERROR: sendto falhou");   //Error
+                n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
+                    if (n == -1)  error("ERROR: recvfrom falhou");   //Error
+                if (strncmp(udp_buffer, "OKREG", 5) != 0)
+                    error("ERROR: registo de nó no servidor de nós falhou");
+                else
+                    registered = 1;
+
+                // free res
+                freeaddrinfo(res);
 
             } else if ((abvr = 0, strncmp(stdin_buffer, "direct join ", 12) == 0) || (abvr = 1, strncmp(stdin_buffer, "dj ", 3) == 0)) {
                 // direct join
@@ -354,10 +332,16 @@ int main(int argc, char *argv[]) {
 
                 if (abvr) {
                     // abreviation
-                    sscanf(stdin_buffer, "dj %s %s", connectIP, connectTCP);
+                    sscanf(stdin_buffer, "dj %15s %5s", connectIP, connectTCP);
                 } else {
                     // no abreviation
-                    sscanf(stdin_buffer, "direct join %s %s", connectIP, connectTCP);
+                    sscanf(stdin_buffer, "direct join %15s %5s", connectIP, connectTCP);
+                }
+
+                char aux[IP_LEN];
+                // check if IP is a valid IPv4 address
+                if (inet_pton(AF_INET, connectIP, aux) != 1) {
+                    error("ERROR: Argumento inválido <IP> não é um endereço IPv4 válido");
                 }
 
                 if (atoi(connectTCP) > 65535 || atoi(connectTCP) < 1024) {
@@ -370,26 +354,27 @@ int main(int argc, char *argv[]) {
                 hints.ai_socktype = SOCK_STREAM;    // TCP
                 hints.ai_flags = AI_PASSIVE;        // Server
 
+                // listening TCP socket
                 in_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                 if (in_tcpsock_fd == -1) {
                     error("ERROR: socket falhou");
                 }
-
+                // get own address info
                 errcode = getaddrinfo(NULL, own_addr.port, &hints, &res);
                 if (errcode != 0) {
                     error("ERROR: getaddrinfo falhou");
                 }
-
+                // bind TCP socket
                 errcode = bind(in_tcpsock_fd, res->ai_addr, res->ai_addrlen);
                 if (errcode == -1) {
                     error("ERROR: bind falhou");
                 }
-
+                // start listening
                 errcode = listen(in_tcpsock_fd, 5);
                 if (errcode == -1) {
                     error("ERROR: listen falhou");
                 }
-
+                // create own node (address already filled)
                 node = node_create();
 
                 if (strcmp(connectIP, "0.0.0.0") == 0) {
@@ -402,6 +387,7 @@ int main(int argc, char *argv[]) {
                 } else {
                     // connect to node
 
+                    // external neighbor TCP socket
                     out_tcpsock_fd = socket(AF_INET, SOCK_STREAM, 0);
                     if (out_tcpsock_fd == -1) {
                         error("ERROR: socket falhou");
@@ -411,24 +397,27 @@ int main(int argc, char *argv[]) {
                     hints.ai_family = AF_INET;          // IPv4
                     hints.ai_socktype = SOCK_STREAM;    // TCP
 
+                    // get external neighbor address info
                     errcode = getaddrinfo(connectIP, connectTCP, &hints, &res);
                     if (errcode != 0) {
                         error("ERROR: getaddrinfo falhou");
                     }
-
+                    // connect to external neighbor
                     errcode = connect(out_tcpsock_fd, res->ai_addr, res->ai_addrlen);
                     if (errcode == -1) {
                         error("ERROR: connect falhou");
                     }
 
+                    // free res
                     freeaddrinfo(res);
 
                     Node_Addr connect_addr;
                     strncpy(connect_addr.ip, connectIP, IP_LEN);
                     strncpy(connect_addr.port, connectTCP, PORT_LEN);
 
+                    // set external neighbor
                     node_set_ext(node, connect_addr);
-
+                    // send ENTRY
                     len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
                     n = write(out_tcpsock_fd, tcp_buffer, len);
                     if (n == -1) {
@@ -461,6 +450,7 @@ int main(int argc, char *argv[]) {
                 int n, len;
 
                 if (node)
+                    // was allocated
                     node_destroy(node);
 
                 // unregister node
@@ -475,6 +465,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (res_udp)
+                    // was allocated
                     freeaddrinfo(res_udp);
             
                 exit(0);
@@ -492,17 +483,19 @@ int main(int argc, char *argv[]) {
         // TCP IN
         if (FD_ISSET(in_tcpsock_fd, &set_fd)) {
 
+            // decrement select counter
             select_cntr--;
-
+            // accept new TCP connection and get new socket descriptor
             newsock_fd = accept(in_tcpsock_fd, NULL, NULL);
             if (newsock_fd == -1) {
                 error("ERROR: accept falhou");
             }
 
             if (num_intr == MAX_INTR) {
+                // full of internal neighbors
                 error("ERROR: Número máximo de nós internos atingido");
             }
-
+            // save socket descriptor
             intr_fd[num_intr] = newsock_fd;
             num_intr++;
 
@@ -517,10 +510,10 @@ int main(int argc, char *argv[]) {
 
             int temp, i = 0;
             int n, len;
-            
+            // decrement select counter
             select_cntr--;
 
-            // get only one command at a time (check for <LF>)
+            // get only one command at a time (check for <LF>) (talvez implementar para todas?)
             do {
                 n = read(out_tcpsock_fd, (char *) &temp, 1);
                 if (n == -1) {
@@ -540,13 +533,13 @@ int main(int argc, char *argv[]) {
                 // ENTRY
                 Node_Addr intr_addr;
                 Node_Addr ext_addr;
-
+                // get internal address
                 sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
-
+                // set internal
                 node_incr_intr(node, intr_addr);
-
+                // my external...
                 ext_addr = node_get_ext(node);
-
+                // ...his safeguard -> send SAFE
                 len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
                 n = write(out_tcpsock_fd, tcp_buffer, len);
                 if (n == -1) {
@@ -556,8 +549,9 @@ int main(int argc, char *argv[]) {
             } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
                 // SAFE
                 Node_Addr safe_addr;
+                // get safeguard
                 sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
-
+                // set safe
                 node_set_safe(node, safe_addr);
 
             } else {
@@ -569,17 +563,16 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // UDP
-        //if (FD_ISSET(udpsock_fd, &set_fd)) {
-
-        //}
-
         // CHECK INTERNAL NEIGHBORS
         for (int i = 0; i < num_intr; i++) {
             if (FD_ISSET(intr_fd[i], &set_fd)) {
+                // descriptor UP for reading
+
+                // decrement select counter
                 select_cntr--;
 
                 int len;
+                // read from descriptor
                 int n = read(intr_fd[i], tcp_buffer, TCP_BUFF_SIZE);
                 if (n == -1) {
                     error("ERROR: read falhou");
@@ -589,22 +582,23 @@ int main(int argc, char *argv[]) {
                     // ENTRY
                     Node_Addr intr_addr;
                     Node_Addr ext_addr;
-
+                    // get internal address
                     sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
-
+                    // set internal
                     node_incr_intr(node, intr_addr);
 
                     if (is_node_ext_own(node)) {
-                        // ext is own
+                        // don't have an external neighbor
+                        // (ext is own by default)
                         node_set_ext(node, intr_addr);
                         ext_addr = node_get_ext(node);
-
+                        // send SAFE (1st answer)
                         len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
                         n = write(intr_fd[i], tcp_buffer, len);
                         if (n == -1) {
                             error("ERROR: write falhou");
                         }
-
+                        // send ENTRY (2nd send my own command)
                         len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
                         n = write(intr_fd[i], tcp_buffer, len);
                         if (n == -1) {
@@ -616,7 +610,7 @@ int main(int argc, char *argv[]) {
                     else {
                         // ext is not own
                         ext_addr = node_get_ext(node);
-
+                        // send SAFE
                         len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
                         n = write(intr_fd[i], tcp_buffer, len);
                         if (n == -1) {
@@ -627,9 +621,9 @@ int main(int argc, char *argv[]) {
                 } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
                     // SAFE
                     Node_Addr safe_addr;
-
+                    // get safeguard address
                     sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
-
+                    // set safeguard
                     node_set_safe(node, safe_addr);
 
                 } else {

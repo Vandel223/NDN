@@ -11,7 +11,7 @@
 struct __Node {
     Node_Addr ext;
     Node_Addr safe;
-    Node_Addr intr[MAX_INTR];
+    Node_Addr intr[MAX_INTR]; // talvez fazer isto com linked list
     int intr_len;
 };
 
@@ -25,7 +25,7 @@ static void error(const char *msg) {
     exit(1);
 }
 
-Node *node_create() {
+Node *node_create(void) {
     Node *node = (Node *) malloc(sizeof(Node));
 
     if (node == NULL) {
@@ -69,7 +69,7 @@ void node_incr_intr(Node *node, const Node_Addr intr) {
 void node_del_intr(Node *node, const Node_Addr intr) {
     int i;
     for (i = 0; i < node->intr_len; i++) {
-        if (strncmp(node->intr[i].ip, intr.ip, IP_LEN) && node->intr[i].port == intr.port) {
+        if ((strncmp(node->intr[i].ip, intr.ip, IP_LEN) == 0) && (strncmp(node->intr[i].port, intr.port, PORT_LEN) == 0)) {
             break;
         }
     }
@@ -95,7 +95,10 @@ void print_node(Node *node) {
     else
         printf("External: %s:%s\n", node->ext.ip, node->ext.port);
 
-    printf("Safe: %s:%s\n", node->safe.ip, node->safe.port);
+    if (node->ext.ip[0] == '\0')
+        printf("Safe: NULL\n");
+    else
+        printf("Safe: %s:%s\n", node->safe.ip, node->safe.port);
 
     if (node->intr_len == 0) {
         printf("Internal: NULL\n");
