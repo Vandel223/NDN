@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <errno.h>
+#include <time.h>
 
 #include "../inc/node.h"
 #include "../inc/ndn.h"
@@ -68,7 +71,7 @@ int main(int argc, char *argv[]) {
 
     // TCP
     int in_tcpsock_fd = 0, out_tcpsock_fd = 0, newsock_fd = 0;
-    char tcp_buffer[TCP_BUFF_SIZE];
+    char tcp_buffer[TCP_BUFF_SIZE], in_tcp_buffer[TCP_BUFF_SIZE];
     int intr_fd[MAX_INTR];
     int num_intr = 0;
 
@@ -207,7 +210,7 @@ int main(int argc, char *argv[]) {
                 errcode = getaddrinfo(server_addr.ip, server_addr.port, &hints, &res_udp);
                     if(errcode != 0) error("ERROR: getaddrinfo falhou");    //Error
                 // get nodes in net
-                len = snprintf(udp_buffer, UDP_BUFF_SIZE, "NODES %s\n", net);    // mandar as net para o buffer
+                len = snprintf(udp_buffer, UDP_BUFF_SIZE, "NODES %s", net);    // mandar as net para o buffer
                 n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
                     if( n == -1)  error("ERROR: sendto falhou");   //Error
                 // nodes list
@@ -258,20 +261,21 @@ int main(int argc, char *argv[]) {
                 
                 else {
                     // options to choose from
-                    char opt[MAX_NODES][OPTIONS_BUFF_SIZE];
+                    char *opt[MAX_NODES];
                     char *aux = strchr(tok_udp + 1, '\n');
                     int i = 0;
                     while (tok_udp != term_udp && i < MAX_NODES) {
 
-                        strncpy(opt[i], tok_udp + 1, tok_udp + 1 - aux);
+                        opt[i] = tok_udp + 1;
                         i++;
                         tok_udp = aux;
+                        *aux = '\0';
                         aux = strchr(aux + 1, '\n');
 
                     }
 
                     // make less predictable
-                    int the_chosen_one = arc4random() % i;
+                    int the_chosen_one = rand() % i;
                     // get connect IP and TCP
                     sscanf(opt[the_chosen_one], "%s %s", connectIP, connectTCP);
 
@@ -310,7 +314,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 // register node
-                len = snprintf(udp_buffer, UDP_BUFF_SIZE, "REG %s %s %s\n", net, own_addr.ip, own_addr.port); 
+                len = snprintf(udp_buffer, UDP_BUFF_SIZE, "REG %s %s %s", net, own_addr.ip, own_addr.port); 
                 n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
                     if( n == -1)  error("ERROR: sendto falhou");   //Error
                 n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
@@ -455,7 +459,7 @@ int main(int argc, char *argv[]) {
 
                 // unregister node
                 if (registered) {
-                    len = snprintf(udp_buffer, UDP_BUFF_SIZE, "UNREG %s %s %s\n", net, own_addr.ip, own_addr.port); 
+                    len = snprintf(udp_buffer, UDP_BUFF_SIZE, "UNREG %s %s %s", net, own_addr.ip, own_addr.port); 
                     n = sendto(udpsock_fd, udp_buffer, len, 0, res_udp->ai_addr, res_udp->ai_addrlen);
                         if( n == -1)  error("ERROR: sendto falhou");   //Error
                     n = recvfrom(udpsock_fd, udp_buffer, UDP_BUFF_SIZE, 0, NULL, NULL);
@@ -525,67 +529,53 @@ int main(int argc, char *argv[]) {
         // TCP OUT
         if (FD_ISSET(out_tcpsock_fd, &set_fd)) {
 
-            int temp, i = 0;
-            int n, len;
+            int n, n_aux;
+            unsigned long int len = 0;
             // decrement select counter
             select_cntr--;
 
-            // get only one command at a time (check for <LF>) (talvez implementar para todas?)
-            do {
-                n = read(out_tcpsock_fd, (char *) &temp, 1);
-                if (n == -1) {
-                    error("ERROR: read falhou");
-                }
-                else if (n == 0) {
-                    close(out_tcpsock_fd);
-                    out_tcpsock_fd = 0;
-                    break;
-                }
+            n = read(out_tcpsock_fd, in_tcp_buffer, TCP_BUFF_SIZE);
+            if (n == -1)
+                error("ERROR: read falhou");
 
-                tcp_buffer[i] = temp;
-                i++;
+            while (len < (unsigned int) n) {
 
-                //          <LF>
-                if (temp == '\n')
-                    break;
+                if (strncmp(in_tcp_buffer + len, "ENTRY", 5) == 0) {
+                    // ENTRY
+                    Node_Addr intr_addr;
+                    Node_Addr ext_addr;
+                    // get internal address
+                    sscanf(in_tcp_buffer + len, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
+                    // set internal
+                    node_incr_intr(node, intr_addr);
+                    // my external...
+                    ext_addr = node_get_ext(node);
+                    // ...his safeguard -> send SAFE
+                    n_aux = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                    n_aux = write(out_tcpsock_fd, tcp_buffer, n_aux);
+                    if (n == -1) {
+                        error("ERROR: write falhou");
+                    }
 
-            } while (1);
+                } else if (strncmp(in_tcp_buffer + len, "SAFE", 4) == 0) {
+                    // SAFE
+                    Node_Addr safe_addr;
+                    // get safeguard
+                    sscanf(in_tcp_buffer + len, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
+                    // set safe
+                    node_set_safe(node, safe_addr);
 
-            if (n == 0)
-                continue;
-
-            if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
-                // ENTRY
-                Node_Addr intr_addr;
-                Node_Addr ext_addr;
-                // get internal address
-                sscanf(tcp_buffer, "ENTRY %s %s\n", intr_addr.ip, intr_addr.port);
-                // set internal
-                node_incr_intr(node, intr_addr);
-                // my external...
-                ext_addr = node_get_ext(node);
-                // ...his safeguard -> send SAFE
-                len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
-                n = write(out_tcpsock_fd, tcp_buffer, len);
-                if (n == -1) {
-                    error("ERROR: write falhou");
+                } else {
+                    fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho externo\n");
                 }
 
-            } else if (strncmp(tcp_buffer, "SAFE", 4) == 0) {
-                // SAFE
-                Node_Addr safe_addr;
-                // get safeguard
-                sscanf(tcp_buffer, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
-                // set safe
-                node_set_safe(node, safe_addr);
-
-            } else {
-                fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho externo\n");
+                len = strchr(in_tcp_buffer + len, '\n') - in_tcp_buffer + 1;
             }
 
             if (select_cntr == 0) {
                 continue;
             }
+        
         }
 
         // CHECK INTERNAL NEIGHBORS
@@ -619,12 +609,8 @@ int main(int argc, char *argv[]) {
                         ext_addr = node_get_ext(node);
                         // send SAFE (1st answer)
                         len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
-                        n = write(intr_fd[i], tcp_buffer, len);
-                        if (n == -1) {
-                            error("ERROR: write falhou");
-                        }
                         // send ENTRY (2nd send my own command)
-                        len = snprintf(tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
+                        len += snprintf(tcp_buffer + len, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
                         n = write(intr_fd[i], tcp_buffer, len);
                         if (n == -1) {
                             error("ERROR: write falhou");
