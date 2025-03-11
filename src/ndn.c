@@ -467,6 +467,23 @@ int main(int argc, char *argv[]) {
                 if (res_udp)
                     // was allocated
                     freeaddrinfo(res_udp);
+
+                // close descriptors
+                if (in_tcpsock_fd)
+                    // was open
+                    close(in_tcpsock_fd);
+
+                if (out_tcpsock_fd)
+                    // was open
+                    close(out_tcpsock_fd);
+
+                if (udpsock_fd)
+                    // was open
+                    close(udpsock_fd);
+
+                for (int i = 0; i < num_intr; i++)
+                    close(intr_fd[i]);
+                
             
                 exit(0);
 
@@ -519,6 +536,11 @@ int main(int argc, char *argv[]) {
                 if (n == -1) {
                     error("ERROR: read falhou");
                 }
+                else if (n == 0) {
+                    close(out_tcpsock_fd);
+                    out_tcpsock_fd = 0;
+                    break;
+                }
 
                 tcp_buffer[i] = temp;
                 i++;
@@ -528,6 +550,9 @@ int main(int argc, char *argv[]) {
                     break;
 
             } while (1);
+
+            if (n == 0)
+                continue;
 
             if (strncmp(tcp_buffer, "ENTRY", 5) == 0) {
                 // ENTRY

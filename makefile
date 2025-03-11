@@ -9,8 +9,6 @@ SRC_DIR = src
 INC_DIR = inc
 # Object directory
 OBJ_DIR = obj
-# Binary directory
-BIN_DIR = bin
 
 # Source files
 SRCS = $(wildcard $(SRC_DIR)/*.c)
@@ -19,7 +17,7 @@ OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRCS))
 # Include files
 INCS = $(wildcard *.h)
 # Executable name
-EXEC = $(BIN_DIR)/ndn
+EXEC = ndn
 
 # Default target
 all: $(EXEC)
@@ -29,6 +27,7 @@ gdb: $(EXEC)
 # Link object files to create executable
 $(EXEC): $(OBJS) | $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^
+	rm -r $(OBJ_DIR)
 
 # Pattern rule for object files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c $(INCS) | $(OBJ_DIR)
@@ -40,7 +39,6 @@ $(BIN_DIR) $(OBJ_DIR):
 
 # Clean up build files
 clean:
-	rm -f $(OBJS) $(EXEC)
-	rm -r $(BIN_DIR) $(OBJ_DIR)
+	rm -f $(EXEC)
 
 .PHONY: all clean
