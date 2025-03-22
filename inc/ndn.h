@@ -15,17 +15,23 @@
 #include <errno.h>
 #include <time.h>
 
-#include "../inc/node.h"
+#include "../inc/node_addr.h"
+#include "../inc/tcp_udp.h"
 
 #define UDP_BUFF_SIZE 256
 #define TCP_BUFF_SIZE 256
 #define STDIN_BUFF_SIZE 256
 #define OPTIONS_BUFF_SIZE 256
 #define MAX_NODES 20
+#define NAME_BUFF_SIZE 101 // name é 100 caracteres máximo + '\0'
+#define MAX_NEIGH 20
 
 #define STDIN 0
 
 #define UDP_PORT 58007
+
+#define IP_LEN 16
+#define PORT_LEN 6
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
