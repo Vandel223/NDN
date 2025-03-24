@@ -87,7 +87,14 @@ int main(int argc, char *argv[]) {
             neigh_addr_fd[i].fd = 0;
     int neigh_len = 0;
 
+    // cache
     int cache_size;
+    int num_strings_cache = 0;
+
+    // interest list
+    Interest interests[MAX_INTEREST];
+    int interests_len = 0;
+
     int abvr = 0; // abreviation of commands
 
     // TCP
@@ -124,7 +131,7 @@ int main(int argc, char *argv[]) {
     if ((cache_size = atoi(argv[1])) == 0) {
         error("ERROR: Argumento inválido <cache> é nulo ou inválido");
     }
-    //char cache[cache_size][NAME_BUFF_SIZE];
+    char cache[cache_size][NAME_BUFF_SIZE];
 
     // check if IP is a valid IPv4 address
     if (inet_pton(AF_INET, argv[2], own_addr.ip) != 1) {
@@ -278,7 +285,6 @@ int main(int argc, char *argv[]) {
                 udp_send(udpsock_fd, res_udp, udp_buffer, len);
                 // confirm registration
                 udp_receive(udpsock_fd, udp_buffer, UDP_BUFF_SIZE);
-                printf("%s", udp_buffer);
                 if (strncmp(udp_buffer, "OKREG", 5) != 0)
                     error("ERROR: registo de nó no servidor de nós falhou");
                 
@@ -342,13 +348,119 @@ int main(int argc, char *argv[]) {
 
                 created = 1;
                 
-            } else if (strncmp(stdin_buffer, "create", 6) == 0 || strncmp(stdin_buffer, "c", 1) == 0) {
+            } else if ((abvr = 0, strncmp(stdin_buffer, "create ", 7) == 0) || (abvr = 1, strncmp(stdin_buffer, "c ", 2) == 0)) {
                 // create
-            } else if (strncmp(stdin_buffer, "delete", 6) == 0 || strncmp(stdin_buffer, "dl", 2) == 0) {
+
+                char name [NAME_BUFF_SIZE];
+
+                // Extrai o nome do objeto do input do utilizador
+                if (abvr) {
+                    // abreviation
+                    sscanf(stdin_buffer, "c %100s", name);
+                } else {
+                    // no abreviation
+                    sscanf(stdin_buffer, "create %100s", name);
+                }
+
+                if (created == 0) {
+                    printf("ERROR: nó não criado\n");
+                }
+                else if(num_strings_cache >= cache_size){
+                    printf("ERROR: cache cheia\n");
+                }
+                else {
+
+                    snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
+
+                    num_strings_cache ++;
+
+                }
+
+            } else if ((abvr = 0, strncmp(stdin_buffer, "delete ", 7) == 0) || (abvr = 1, strncmp(stdin_buffer, "dl ", 3) == 0)) {
                 // delete
-            } else if (strncmp(stdin_buffer, "retrieve", 8) == 0 || strncmp(stdin_buffer, "r", 1) == 0) {
+
+                char name [NAME_BUFF_SIZE];
+                int i;
+
+                // Extrai o nome do objeto do input do utilizador
+                if (abvr) {
+                    // abreviation
+                    sscanf(stdin_buffer, "dl %100s", name);
+                } else {
+                    // no abreviation
+                    sscanf(stdin_buffer, "delete %100s", name);
+                }
+
+                if (created == 0) {
+                    printf("ERROR: nó não criado\n");
+                }
+                else if(num_strings_cache <= 0){
+                    printf("ERROR: cache vazia\n");
+                }
+                else {
+
+                    for (i = 0; i < num_strings_cache; i++) {
+                        if (strncmp(cache[i], name, NAME_BUFF_SIZE) == 0) {
+                            break;
+                        }
+                    }
+
+                    for (; i < num_strings_cache - 1; i++) {
+                        snprintf(cache[i], NAME_BUFF_SIZE, "%s", cache[i + 1]);
+                    }
+
+                    if (i >= num_strings_cache) {
+                        printf("ERROR: <name> não encontrado\n");
+                    }
+                    else {
+                        num_strings_cache--;
+                    }
+
+                }
+
+            } else if (abvr = 0, (strncmp(stdin_buffer, "retrieve ", 9) == 0) || (abvr = 1, strncmp(stdin_buffer, "r ", 2) == 0)) {
                 // retrieve
-            } else if (strncmp(stdin_buffer, "show topology", 13) == 0 || strncmp(stdin_buffer, "st", 2) == 0) {
+
+                char name [NAME_BUFF_SIZE];
+                int i;
+
+                // Extrai o nome do objeto do input do utilizador
+                if (abvr) {
+                    // abreviation
+                    sscanf(stdin_buffer, "r %100s", name);
+                } else {
+                    // no abreviation
+                    sscanf(stdin_buffer, "retrieve %100s", name);
+                }
+
+                for (i = 0; i < num_strings_cache; i++) {
+                    if (strncmp(cache[i], name, NAME_BUFF_SIZE) == 0) {
+                        break;
+                    }
+                }
+
+                if (i >= num_strings_cache) {
+
+                    if (neigh_len == 0) {
+                        printf("ERROR: <name> não encontrado e sem vizinhos\n");
+                    }
+                    else {
+
+                        snprintf(interests[interests_len].name, NAME_BUFF_SIZE, "%s", name);
+
+                        int len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
+                        for (int j = 0; j < neigh_len; j++) {
+                            tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
+                            interests[interests_len].state_fd[j].fd = neigh_addr_fd[j].fd;
+                            interests[interests_len].state_fd[j].state = WAIT;
+                        }
+
+                        interests[interests_len].state_fd_len = neigh_len;
+                        interests_len++;
+                    }
+                }
+
+            } else if (strncmp(stdin_buffer, "show topology\n", 14) == 0 || strncmp(stdin_buffer, "st\n", 3) == 0) {
                 // show topology
                 if (created == 0)
                     fprintf(stderr, "ERROR: Nó não criado\n");
@@ -377,58 +489,113 @@ int main(int argc, char *argv[]) {
                     printf("\n");
                 }
 
-            } else if (strncmp(stdin_buffer, "show names", 10) == 0 || strncmp(stdin_buffer, "sn", 2) == 0) {
+            } else if (strncmp(stdin_buffer, "show names\n", 11) == 0 || strncmp(stdin_buffer, "sn\n", 3) == 0) {
                 // show names
-            } else if (strncmp(stdin_buffer, "show interest table", 19) == 0 || strncmp(stdin_buffer, "si", 2) == 0) {
+
+                if (created == 0) {
+                    printf("ERROR: nó não criado\n");
+                }
+                else if (num_strings_cache == 0) {
+                    printf("NAMES: NULL\n");
+                }
+                else {
+                    printf("NAMES:");
+                    for (int i = 0; i < num_strings_cache; i++) {
+                        printf(" %s", cache[i]);
+                    }
+                    printf("\n");
+                }
+
+            } else if (strncmp(stdin_buffer, "show interest table\n", 20) == 0 || strncmp(stdin_buffer, "si\n", 3) == 0) {
                 // show interest table
-            } else if (strncmp(stdin_buffer, "leave", 5) == 0 || strncmp(stdin_buffer, "l", 1) == 0) {
+
+                if (created == 0) {
+                    printf("ERROR: nó não criado\n");
+                }
+                else if (interests_len == 0) {
+                    printf("INTEREST: NULL\n");
+                }
+                else {
+                    printf("INTEREST:\n");
+                    for (int i = 0; i < interests_len; i++) {
+                        printf("%s ", interests[i].name);
+                        for (int j = 0; j < interests[i].state_fd_len; j++) {
+                            printf("%d:", interests[i].state_fd[j].fd);
+                            switch (interests[i].state_fd[j].state)
+                            {
+                            case WAIT:
+                                printf("ESPERA ");
+                                break;
+                            
+                            case CLOSE:
+                            printf("FECHADO ");
+                            break;
+
+                            case ANSWER:
+                            printf("RESPOSTA ");
+                            break;
+                            
+                            default:
+                                break;
+                            }
+                        }
+                        printf("\n");
+                    }
+
+                }
+
+            } else if (strncmp(stdin_buffer, "leave\n", 6) == 0 || strncmp(stdin_buffer, "l\n", 2) == 0) {
                 // leave
                 int len;
 
-                if (registered != 0) {
-                    // unregister node
-                    len = snprintf(udp_buffer, UDP_BUFF_SIZE, "UNREG %s %s %s", net, own_addr.ip, own_addr.port);
-                    udp_send(udpsock_fd, res_udp, udp_buffer, len);
-                    // confirm unregistration
-                    udp_receive(udpsock_fd, udp_buffer, UDP_BUFF_SIZE);
-                    if (strncmp(udp_buffer, "OKUNREG", 7) != 0)
-                        error("ERROR: cancelamento de registo de nó no servidor de nós falhou");
+                if (created == 0) {
+                    printf("ERROR: nó não criado\n");
                 }
+                else {
+                    if (registered != 0) {
+                        // unregister node
+                        len = snprintf(udp_buffer, UDP_BUFF_SIZE, "UNREG %s %s %s", net, own_addr.ip, own_addr.port);
+                        udp_send(udpsock_fd, res_udp, udp_buffer, len);
+                        // confirm unregistration
+                        udp_receive(udpsock_fd, udp_buffer, UDP_BUFF_SIZE);
+                        if (strncmp(udp_buffer, "OKUNREG", 7) != 0)
+                            error("ERROR: cancelamento de registo de nó no servidor de nós falhou");
+                    }
 
-                if (res_udp != 0)
-                    // was allocated
-                    freeaddrinfo(res_udp);
-                    res_udp = 0;
+                    if (res_udp != 0)
+                        // was allocated
+                        freeaddrinfo(res_udp);
+                        res_udp = 0;
 
-                // close descriptors
-                if (listening_fd != 0)
-                    // was open
-                    close(listening_fd);
-                    listening_fd = 0;
+                    // close descriptors
+                    if (listening_fd != 0)
+                        // was open
+                        close(listening_fd);
+                        listening_fd = 0;
 
-                if (udpsock_fd != 0)
-                    // was open
-                    close(udpsock_fd);
-                    udpsock_fd = 0;
+                    if (udpsock_fd != 0)
+                        // was open
+                        close(udpsock_fd);
+                        udpsock_fd = 0;
 
-                for (int i = 0; i < neigh_len; i++) {
-                    close(neigh_addr_fd[i].fd);
-                    neigh_addr_fd[i].fd = 0;
-                }
+                    for (int i = 0; i < neigh_len; i++) {
+                        close(neigh_addr_fd[i].fd);
+                        neigh_addr_fd[i].fd = 0;
+                    }
 
-                if (created != 0) {
-                    // was allocated
                     memset(&ext_addr, 0, sizeof(Node_Addr));
                     memset(&safe_addr, 0, sizeof(Node_Addr));
                     for (int i = 0; i < neigh_len; i++) {
                         memset(&neigh_addr_fd[i], 0, sizeof(Node_Addr_FD));
                     }
                     created = 0;
+
+                    neigh_len = 0;
+                    num_strings_cache = 0;
+                    interests_len = 0;
                 }
 
-                neigh_len = 0;
-
-            } else if (strncmp(stdin_buffer, "exit", 4) == 0 || strncmp(stdin_buffer, "x", 1) == 0) {
+            } else if (strncmp(stdin_buffer, "exit\n", 5) == 0 || strncmp(stdin_buffer, "x\n", 2) == 0) {
                 // exit
                 if (created == 1) {
                     printf("ERROR: Nó criado. Experimente o comando leave antes.\n");  
@@ -472,34 +639,6 @@ int main(int argc, char *argv[]) {
 
         }
 
-            /*while (len < n) {
-
-                if (strncmp(in_tcp_buffer + len, "ENTRY", 5) == 0) {
-                    // ENTRY
-                    // get internal address
-                    sscanf(in_tcp_buffer + len, "ENTRY %s %s\n", neigh_addr_fd[neigh_len].node_addr.ip, neigh_addr_fd[neigh_len].node_addr.port);
-                    neigh_addr_fd[neigh_len].fd = ext_addr_fd.fd;
-                    ext_addr_fd.fd = 0;
-                    neigh_len++;
-                    // my external is his safeguard -> send SAFE
-                    n_aux = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr_fd.node_addr.ip, ext_addr_fd.node_addr.port);
-                    n_aux = write(ext_addr_fd.fd, out_tcp_buffer, n_aux);
-                    if (n == -1) {
-                        error("ERROR: write falhou");
-                    }
-
-                } else if (strncmp(in_tcp_buffer + len, "SAFE", 4) == 0) {
-                    // SAFE
-                    // get safeguard
-                    sscanf(in_tcp_buffer + len, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
-
-                } else {
-                    fprintf(stderr, "ERROR: Envio de comando errado por parte da vizinho externo\n");
-                }
-
-                len = strchr(in_tcp_buffer + len, '\n') - in_tcp_buffer + 1;
-            } */
-
         // CHECK NEIGHBORS
         for (int i = 0; i < neigh_len; i++) {
             if (FD_ISSET(neigh_addr_fd[i].fd, &set_fd)) {
@@ -513,6 +652,7 @@ int main(int argc, char *argv[]) {
                 int len = 0, len_temp = 0;
                 // read from descriptor
                 int n = tcp_receive(neigh_addr_fd[i].fd, in_tcp_buffer, TCP_BUFF_SIZE);
+                printf("%s", in_tcp_buffer);
 
                 if (n == 0) {
                     // connection closed on other side
@@ -613,7 +753,216 @@ int main(int argc, char *argv[]) {
                         // get safeguard address
                         sscanf(in_tcp_buffer + len, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
     
-                    } else {
+                    } 
+
+                    else if (strncmp(in_tcp_buffer + len, "INTEREST", 8) == 0) {
+                        // INTEREST
+                        char name [NAME_BUFF_SIZE];
+                        int j;
+                        int k;
+                        // get name
+                        sscanf(in_tcp_buffer + len, "INTEREST %s\n", name);
+
+                        for (j = 0; j < num_strings_cache; j++) {
+                            if (strncmp(cache[j], name, NAME_BUFF_SIZE) == 0) {
+                                break;
+                            }
+                        }
+
+                        if (j < num_strings_cache) {
+                            // found
+                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                        }
+
+                        else {
+                            // not found
+
+                            if (neigh_len == 1) {
+                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                            }
+
+                            else {
+
+                                for (j = 0; j < interests_len; j++) {
+                                    if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
+                                        break;
+                                    }
+                                }
+                            
+                                if (j >= interests_len) {
+
+                                    if (interests_len == MAX_INTEREST) {
+                                        error("ERROR: número máximo de interesses atingido");
+                                    }
+
+                                    // create new interest list entry
+                                    snprintf(interests[interests_len].name, NAME_BUFF_SIZE, "%s", name);
+                                    interests[interests_len].state_fd_len = 0;
+                                    // prepare to send INTEREST to all but current neighbor
+                                    int len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
+                                    for (j = 0; j < neigh_len; j++) {
+                                        if (i != j) {
+                                            tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
+                                            interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[j].fd;
+                                            interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = WAIT;
+                                            interests[interests_len].state_fd_len++;
+                                        }
+                                    }
+
+                                    interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[i].fd;
+                                    interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = ANSWER;
+                                    interests[interests_len].state_fd_len++;
+            
+                                    interests_len++;
+
+                                }
+
+                                else {
+
+                                    for (k = 0; k < interests[j].state_fd_len; k++) {
+                                        if (neigh_addr_fd[i].fd == interests[j].state_fd[k].fd) {
+                                            break;
+                                        }
+                                    }
+
+                                    if (k == interests[j].state_fd_len) {
+
+                                        if (k == MAX_NEIGH) {
+                                            error("ERROR: número máximo de interfaces de interesse atingidas");
+                                        }
+
+                                        interests[j].state_fd[k].fd = neigh_addr_fd[i].fd;
+                                        interests[j].state_fd_len++;
+                                    }
+
+                                    interests[j].state_fd[k].state = ANSWER;
+
+                                    int wait = 0;
+                                    for (k = 0; k < interests[j].state_fd_len; k++) {
+                                        if (interests[j].state_fd[k].state == WAIT)
+                                            wait = 1;
+                                    }
+
+                                    if (wait == 0) {
+                                        len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                        for (k = 0; k < interests[j].state_fd_len; k++) {
+                                            if (interests[j].state_fd[k].state == ANSWER)
+                                                tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                        }
+                                    }
+
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                    else if (strncmp(in_tcp_buffer + len, "OBJECT", 6) == 0) {
+                        // OBJECT
+                        char name[NAME_BUFF_SIZE];
+                        int j;
+                        int k;
+
+                        sscanf(in_tcp_buffer, "OBJECT %s\n", name);
+
+                        // search which interest has correspondence to name
+                        for (j = 0; j < interests_len; j++) {
+                            if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
+                                break;
+                            }
+                        }
+
+                        if (j >= interests_len) {
+                            error("ERROR: OBJECT sem um INTEREST correspondente na lista");
+                        }
+
+                        // search where the descriptor is in the interest
+                        for (k = 0; k < interests[j].state_fd_len; k++) {
+
+                            if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd) {
+                                break;
+                            }
+
+                        }
+
+                        if (k < 0) {
+                            error("ERROR: descritor que enviou OBJECT não está no INTEREST correspondente");
+                        }
+                        
+                        snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
+                        num_strings_cache++;
+
+                        len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
+                        for (k = 0; k < interests[j].state_fd_len; k++) {
+                            if (interests[j].state_fd[k].state == ANSWER)
+                                tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                        }
+
+                        for (; j < interests_len; j++) {
+                            interests[j] = interests[j + 1];
+                        }
+
+                        interests_len--;
+
+
+                    }
+
+                    else if (strncmp(in_tcp_buffer + len, "NOOBJECT", 8) == 0) {
+                        // NOOBJECT
+                        char name[NAME_BUFF_SIZE];
+                        int j;
+                        int k = 0;
+
+                        sscanf(in_tcp_buffer, "NOOBJECT %s\n", name);
+
+                        for (j = 0; j < interests_len; j++) {
+                            if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
+                                for (k = 0; k < interests[j].state_fd_len; k++) {
+                                    if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd)
+                                        break;
+                                }
+                                if (k >= interests[j].state_fd_len) {
+                                    error("ERROR: NOOBJECT recebido por descritor não associado");
+                                }
+                            }
+                            break;
+                        }
+
+                        if (j < interests_len) {
+
+                            interests[j].state_fd[k].state = CLOSE;
+
+                            int wait = 0;
+                            for (k = 0; k < interests[j].state_fd_len; k++) {
+                                if (interests[j].state_fd[k].state == WAIT)
+                                    wait = 1;
+                            }
+
+                            if (wait == 0) {
+                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                for (k = 0; k < interests[j].state_fd_len; k++) {
+                                    if (interests[j].state_fd[k].state == ANSWER) {
+                                        tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                    }
+                                }
+
+                                for (; j < interests_len; j++) {
+                                    interests[j] = interests[j + 1];
+                                }
+                                interests_len--;
+
+                                printf("ERROR: não foi encontrado %s na rede.\n", name);
+                            }
+
+                        }
+
+                    }
+
+                    else {
                             error("ERROR: Envio de comando errado por parte da vizinho interno");
                     }
 

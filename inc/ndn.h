@@ -25,6 +25,7 @@
 #define MAX_NODES 20
 #define NAME_BUFF_SIZE 101 // name é 100 caracteres máximo + '\0'
 #define MAX_NEIGH 20
+#define MAX_INTEREST 20
 
 #define STDIN 0
 
@@ -34,5 +35,22 @@
 #define PORT_LEN 6
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
+typedef enum __State {
+    CLOSE = 0,
+    WAIT,
+    ANSWER,
+ } State;
+
+ typedef struct __State_FD {
+    int fd;
+    State state;
+ } State_FD;
+
+ typedef struct __Interest {
+    char name[NAME_BUFF_SIZE];
+    State_FD state_fd[MAX_NEIGH];
+    int state_fd_len;
+ } Interest;
 
 #endif
