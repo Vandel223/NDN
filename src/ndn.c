@@ -415,7 +415,7 @@ int main(int argc, char *argv[]) {
                     else {
                         // delete
                         for (; i < objects_len - 1; i++) {
-                            snprintf(objects[i], NAME_BUFF_SIZE, "%s", objects[i + 1]);
+                            strncpy(objects[i],  objects[i + 1], NAME_BUFF_SIZE);
                         }
                         objects_len--;
 
