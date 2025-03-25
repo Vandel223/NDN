@@ -586,21 +586,24 @@ int main(int argc, char *argv[]) {
                             error("ERROR: cancelamento de registo de nó no servidor de nós falhou");
                     }
 
-                    if (res_udp != 0)
+                    if (res_udp != 0) {
                         // was allocated
                         freeaddrinfo(res_udp);
                         res_udp = 0;
+                    }
 
                     // close descriptors
-                    if (listening_fd != 0)
+                    if (listening_fd != 0) {
                         // was open
                         close(listening_fd);
                         listening_fd = 0;
+                    }
 
-                    if (udpsock_fd != 0)
+                    if (udpsock_fd != 0) {
                         // was open
                         close(udpsock_fd);
                         udpsock_fd = 0;
+                    }
 
                     for (int i = 0; i < neigh_len; i++) {
                         close(neigh_addr_fd[i].fd);
