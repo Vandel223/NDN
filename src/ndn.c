@@ -91,6 +91,10 @@ int main(int argc, char *argv[]) {
     int cache_size;
     int num_strings_cache = 0;
 
+    // objects
+    char objects[MAX_OBJ][NAME_BUFF_SIZE];
+    int objects_len = 0;
+
     // interest list
     Interest interests[MAX_INTEREST];
     int interests_len = 0;
@@ -131,6 +135,7 @@ int main(int argc, char *argv[]) {
     if ((cache_size = atoi(argv[1])) == 0) {
         error("ERROR: Argumento inválido <cache> é nulo ou inválido");
     }
+    // initialize cache
     char cache[cache_size][NAME_BUFF_SIZE];
 
     // check if IP is a valid IPv4 address
@@ -365,14 +370,13 @@ int main(int argc, char *argv[]) {
                 if (created == 0) {
                     printf("ERROR: nó não criado\n");
                 }
-                else if(num_strings_cache >= cache_size){
+                else if(objects_len >= cache_size){
                     printf("ERROR: cache cheia\n");
                 }
                 else {
 
-                    snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
-
-                    num_strings_cache ++;
+                    snprintf(objects[objects_len], NAME_BUFF_SIZE, "%s", name);
+                    objects_len++;
 
                 }
 
@@ -399,21 +403,22 @@ int main(int argc, char *argv[]) {
                 }
                 else {
 
-                    for (i = 0; i < num_strings_cache; i++) {
-                        if (strncmp(cache[i], name, NAME_BUFF_SIZE) == 0) {
+                    for (i = 0; i < objects_len; i++) {
+                        if (strncmp(objects[i], name, NAME_BUFF_SIZE) == 0) {
                             break;
                         }
                     }
 
-                    for (; i < num_strings_cache - 1; i++) {
-                        snprintf(cache[i], NAME_BUFF_SIZE, "%s", cache[i + 1]);
-                    }
-
-                    if (i >= num_strings_cache) {
+                    if (i >= objects_len) {
                         printf("ERROR: <name> não encontrado\n");
                     }
                     else {
-                        num_strings_cache--;
+                        // delete
+                        for (; i < objects_len - 1; i++) {
+                            snprintf(objects[i], NAME_BUFF_SIZE, "%s", objects[i + 1]);
+                        }
+                        objects_len--;
+
                     }
 
                 }
@@ -422,7 +427,7 @@ int main(int argc, char *argv[]) {
                 // retrieve
 
                 char name [NAME_BUFF_SIZE];
-                int i;
+                int i_cache, i_objects;
 
                 // Extrai o nome do objeto do input do utilizador
                 if (abvr) {
@@ -433,13 +438,19 @@ int main(int argc, char *argv[]) {
                     sscanf(stdin_buffer, "retrieve %100s", name);
                 }
 
-                for (i = 0; i < num_strings_cache; i++) {
-                    if (strncmp(cache[i], name, NAME_BUFF_SIZE) == 0) {
+                for (i_cache = 0; i_cache < num_strings_cache; i_cache++) {
+                    if (strncmp(cache[i_cache], name, NAME_BUFF_SIZE) == 0) {
                         break;
                     }
                 }
 
-                if (i >= num_strings_cache) {
+                for (i_objects = 0; i_objects < objects_len; i_objects++) {
+                    if (strncmp(objects[i_objects], name, NAME_BUFF_SIZE) == 0) {
+                        break;
+                    }
+                }
+
+                if (i_cache >= num_strings_cache && i_objects >= objects_len) {
 
                     if (neigh_len == 0) {
                         printf("ERROR: <name> não encontrado e sem vizinhos\n");
@@ -495,15 +506,28 @@ int main(int argc, char *argv[]) {
                 if (created == 0) {
                     printf("ERROR: nó não criado\n");
                 }
-                else if (num_strings_cache == 0) {
-                    printf("NAMES: NULL\n");
-                }
                 else {
-                    printf("NAMES:");
-                    for (int i = 0; i < num_strings_cache; i++) {
-                        printf(" %s", cache[i]);
+                    if (num_strings_cache == 0) {
+                        printf("NAMES (CACHE): NULL\n");
                     }
+                    else {
+                        printf("NAMES (CACHE):\n");
+                        for (int i = 0; i < num_strings_cache; i++) {
+                            printf("\t%s\n", cache[i]);
+                        }
+                    }
+
                     printf("\n");
+
+                    if (objects_len == 0) {
+                        printf("NAMES (OBJECTS): NULL\n");
+                    }
+                    else {
+                        printf("NAMES (OBJECTS):\n");
+                        for (int i = 0; i < objects_len; i++) {
+                            printf("\t%s\n", objects[i]);
+                        }
+                    }
                 }
 
             } else if (strncmp(stdin_buffer, "show interest table\n", 20) == 0 || strncmp(stdin_buffer, "si\n", 3) == 0) {
@@ -593,6 +617,7 @@ int main(int argc, char *argv[]) {
                     neigh_len = 0;
                     num_strings_cache = 0;
                     interests_len = 0;
+                    objects_len = 0;
                 }
 
             } else if (strncmp(stdin_buffer, "exit\n", 5) == 0 || strncmp(stdin_buffer, "x\n", 2) == 0) {
@@ -771,7 +796,19 @@ int main(int argc, char *argv[]) {
 
                         if (j < num_strings_cache) {
                             // found
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
+                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", cache[j]);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                        }
+
+                        for (j = 0; j < objects_len; j++) {
+                            if (strncmp(objects[j], name, NAME_BUFF_SIZE) == 0) {
+                                break;
+                            }
+                        }
+
+                        if (j < objects_len) {
+                            // found
+                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
                             tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
                         }
 

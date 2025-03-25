@@ -1,7 +1,9 @@
 #ifndef NDN_H
 #define NDN_H
 
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200112L
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +28,7 @@
 #define NAME_BUFF_SIZE 101 // name é 100 caracteres máximo + '\0'
 #define MAX_NEIGH 20
 #define MAX_INTEREST 20
+#define MAX_OBJ 20
 
 #define STDIN 0
 
