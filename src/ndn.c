@@ -802,95 +802,98 @@ int main(int argc, char *argv[]) {
                             len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", cache[j]);
                             tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
                         }
-
-                        for (j = 0; j < objects_len; j++) {
-                            if (strncmp(objects[j], name, NAME_BUFF_SIZE) == 0) {
-                                break;
-                            }
-                        }
-
-                        if (j < objects_len) {
-                            // found
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
-                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
-                        }
-
                         else {
-                            // not found
 
-                            if (neigh_len == 1) {
-                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                            for (j = 0; j < objects_len; j++) {
+                                if (strncmp(objects[j], name, NAME_BUFF_SIZE) == 0) {
+                                    break;
+                                }
+                            }
+
+                            if (j < objects_len) {
+                                // found
+                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
                                 tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
                             }
 
                             else {
+                                // not found
 
-                                for (j = 0; j < interests_len; j++) {
-                                    if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
-                                        break;
-                                    }
-                                }
-                            
-                                if (j >= interests_len) {
-
-                                    if (interests_len == MAX_INTEREST) {
-                                        error("ERROR: número máximo de interesses atingido");
-                                    }
-
-                                    // create new interest list entry
-                                    snprintf(interests[interests_len].name, NAME_BUFF_SIZE, "%s", name);
-                                    interests[interests_len].state_fd_len = 0;
-                                    // prepare to send INTEREST to all but current neighbor
-                                    int len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
-                                    for (j = 0; j < neigh_len; j++) {
-                                        if (i != j) {
-                                            tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
-                                            interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[j].fd;
-                                            interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = WAIT;
-                                            interests[interests_len].state_fd_len++;
-                                        }
-                                    }
-
-                                    interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[i].fd;
-                                    interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = ANSWER;
-                                    interests[interests_len].state_fd_len++;
-            
-                                    interests_len++;
-
+                                if (neigh_len == 1) {
+                                    len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                    tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
                                 }
 
                                 else {
 
-                                    for (k = 0; k < interests[j].state_fd_len; k++) {
-                                        if (neigh_addr_fd[i].fd == interests[j].state_fd[k].fd) {
+                                    for (j = 0; j < interests_len; j++) {
+                                        if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
                                             break;
                                         }
                                     }
+                                
+                                    if (j >= interests_len) {
 
-                                    if (k == interests[j].state_fd_len) {
-
-                                        if (k == MAX_NEIGH) {
-                                            error("ERROR: número máximo de interfaces de interesse atingidas");
+                                        if (interests_len == MAX_INTEREST) {
+                                            error("ERROR: número máximo de interesses atingido");
                                         }
 
-                                        interests[j].state_fd[k].fd = neigh_addr_fd[i].fd;
-                                        interests[j].state_fd_len++;
+                                        // create new interest list entry
+                                        snprintf(interests[interests_len].name, NAME_BUFF_SIZE, "%s", name);
+                                        interests[interests_len].state_fd_len = 0;
+                                        // prepare to send INTEREST to all but current neighbor
+                                        int len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
+                                        for (j = 0; j < neigh_len; j++) {
+                                            if (i != j) {
+                                                tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
+                                                interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[j].fd;
+                                                interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = WAIT;
+                                                interests[interests_len].state_fd_len++;
+                                            }
+                                        }
+
+                                        interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[i].fd;
+                                        interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = ANSWER;
+                                        interests[interests_len].state_fd_len++;
+                
+                                        interests_len++;
+
                                     }
 
-                                    interests[j].state_fd[k].state = ANSWER;
+                                    else {
 
-                                    int wait = 0;
-                                    for (k = 0; k < interests[j].state_fd_len; k++) {
-                                        if (interests[j].state_fd[k].state == WAIT)
-                                            wait = 1;
-                                    }
-
-                                    if (wait == 0) {
-                                        len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                         for (k = 0; k < interests[j].state_fd_len; k++) {
-                                            if (interests[j].state_fd[k].state == ANSWER)
-                                                tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                            if (neigh_addr_fd[i].fd == interests[j].state_fd[k].fd) {
+                                                break;
+                                            }
                                         }
+
+                                        if (k == interests[j].state_fd_len) {
+
+                                            if (k == MAX_NEIGH) {
+                                                error("ERROR: número máximo de interfaces de interesse atingidas");
+                                            }
+
+                                            interests[j].state_fd[k].fd = neigh_addr_fd[i].fd;
+                                            interests[j].state_fd_len++;
+                                        }
+
+                                        interests[j].state_fd[k].state = ANSWER;
+
+                                        int wait = 0;
+                                        for (k = 0; k < interests[j].state_fd_len; k++) {
+                                            if (interests[j].state_fd[k].state == WAIT)
+                                                wait = 1;
+                                        }
+
+                                        if (wait == 0) {
+                                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                            for (k = 0; k < interests[j].state_fd_len; k++) {
+                                                if (interests[j].state_fd[k].state == ANSWER)
+                                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                            }
+                                        }
+
                                     }
 
                                 }
@@ -916,38 +919,37 @@ int main(int argc, char *argv[]) {
                             }
                         }
 
-                        if (j >= interests_len) {
-                            error("ERROR: OBJECT sem um INTEREST correspondente na lista");
-                        }
+                        if (j < interests_len) {
 
-                        // search where the descriptor is in the interest
-                        for (k = 0; k < interests[j].state_fd_len; k++) {
+                            // search where the descriptor is in the interest
+                            for (k = 0; k < interests[j].state_fd_len; k++) {
 
-                            if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd) {
-                                break;
+                                if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd) {
+                                    break;
+                                }
+
                             }
 
+                            if (k < 0) {
+                                error("ERROR: descritor que enviou OBJECT não está no INTEREST correspondente");
+                            }
+                            
+                            snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
+                            num_strings_cache++;
+
+                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
+                            for (k = 0; k < interests[j].state_fd_len; k++) {
+                                if (interests[j].state_fd[k].state == ANSWER)
+                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                            }
+
+                            for (; j < interests_len; j++) {
+                                interests[j] = interests[j + 1];
+                            }
+
+                            interests_len--;
+
                         }
-
-                        if (k < 0) {
-                            error("ERROR: descritor que enviou OBJECT não está no INTEREST correspondente");
-                        }
-                        
-                        snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
-                        num_strings_cache++;
-
-                        len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
-                        for (k = 0; k < interests[j].state_fd_len; k++) {
-                            if (interests[j].state_fd[k].state == ANSWER)
-                                tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
-                        }
-
-                        for (; j < interests_len; j++) {
-                            interests[j] = interests[j + 1];
-                        }
-
-                        interests_len--;
-
 
                     }
 
