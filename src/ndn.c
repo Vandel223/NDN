@@ -473,6 +473,32 @@ int main(int argc, char *argv[]) {
 
                         interests[interests_len].state_fd_len = neigh_len;
                         interests_len++;
+
+                        printf("INTEREST:\n");
+                        for (int i = 0; i < interests_len; i++) {
+                            printf("%s ", interests[i].name);
+                            for (int j = 0; j < interests[i].state_fd_len; j++) {
+                                printf("%d:", interests[i].state_fd[j].fd);
+                                switch (interests[i].state_fd[j].state)
+                                {
+                                case WAIT:
+                                    printf("ESPERA ");
+                                    break;
+                                
+                                case CLOSE:
+                                printf("FECHADO ");
+                                break;
+
+                                case ANSWER:
+                                printf("RESPOSTA ");
+                                break;
+                                
+                                default:
+                                    break;
+                                }
+                            }
+                            printf("\n");
+                        }
                     }
                 }
 
@@ -686,7 +712,7 @@ int main(int argc, char *argv[]) {
                 int seperated = 0;
                 // read from descriptor
                 int n = tcp_receive(neigh_addr_fd[i].fd, neigh_addr_fd[i].buffer + neigh_addr_fd[i].buffer_len, NEIGH_BUFF_SIZE - neigh_addr_fd[i].buffer_len);
-                printf("%s", neigh_addr_fd[i].buffer);
+                //printf("%s", neigh_addr_fd[i].buffer);
 
                 if (n == 0) {
                     // connection closed on other side
@@ -758,8 +784,8 @@ int main(int argc, char *argv[]) {
                 char *check_newline = strrchr(neigh_addr_fd[i].buffer, '\n');
                 if (check_newline == NULL) {
                     // no '\n' in buffer
-                    neigh_addr_fd[i].buffer_len += n;
-                    if (neigh_addr_fd[i].buffer_len >= NEIGH_BUFF_SIZE - 1) {
+                    neigh_addr_fd[i].buffer_len += n + 1;
+                    if (neigh_addr_fd[i].buffer_len >= NEIGH_BUFF_SIZE) {
                         // buffer full
                         // reset offset, as there is no way the buffer does not have enough space for a command
                         neigh_addr_fd[i].buffer_len = 0;
@@ -769,7 +795,7 @@ int main(int argc, char *argv[]) {
 
                 int last_newline = strrchr(neigh_addr_fd[i].buffer, '\n') - neigh_addr_fd[i].buffer + 1;
 
-                if (last_newline != n) {
+                if (last_newline - neigh_addr_fd[i].buffer_len != n) {
                     // a command was seperated in two buffers
                     seperated = 1;
                 }
@@ -830,6 +856,38 @@ int main(int argc, char *argv[]) {
                             // found
                             len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", cache[j]);
                             tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
+                            // print interest table
+                            if (interests_len == 0) {
+                                printf("INTEREST:\n");
+                            }
+                            else {
+                                printf("INTEREST:\n");
+                                for (int p = 0; p < interests_len; p++) {
+                                    printf("%s ", interests[p].name);
+                                    for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                        printf("%d:", interests[p].state_fd[q].fd);
+                                        switch (interests[p].state_fd[q].state)
+                                        {
+                                        case WAIT:
+                                            printf("ESPERA ");
+                                            break;
+                                        
+                                        case CLOSE:
+                                        printf("FECHADO ");
+                                        break;
+
+                                        case ANSWER:
+                                        printf("RESPOSTA ");
+                                        break;
+                                        
+                                        default:
+                                            break;
+                                        }
+                                    }
+                                    printf("\n");
+                                }
+                            }
+                            printf("%s %d:FECHADO\n", name, neigh_addr_fd[i].fd);
                         }
                         else {
 
@@ -841,8 +899,41 @@ int main(int argc, char *argv[]) {
 
                             if (j < objects_len) {
                                 // found
-                                len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
+                                len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[j]);
                                 tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
+                                // print interest table
+                                if (interests_len == 0) {
+                                    printf("INTEREST:\n");
+                                }
+                                else {
+                                    printf("INTEREST:\n");
+                                    for (int p = 0; p < interests_len; p++) {
+                                        printf("%s ", interests[p].name);
+                                        for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                            printf("%d:", interests[p].state_fd[q].fd);
+                                            switch (interests[p].state_fd[q].state)
+                                            {
+                                            case WAIT:
+                                                printf("ESPERA ");
+                                                break;
+                                            
+                                            case CLOSE:
+                                            printf("FECHADO ");
+                                            break;
+
+                                            case ANSWER:
+                                            printf("RESPOSTA ");
+                                            break;
+                                            
+                                            default:
+                                                break;
+                                            }
+                                        }
+                                        printf("\n");
+                                    }
+                                }
+                                printf("%s %d:FECHADO\n", name, neigh_addr_fd[i].fd);
+                                
                             }
 
                             else {
@@ -851,6 +942,39 @@ int main(int argc, char *argv[]) {
                                 if (neigh_len == 1) {
                                     len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                     tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
+                                    // print interest table
+                                    if (interests_len == 0) {
+                                        printf("INTEREST:\n");
+                                    }
+                                    else {
+                                        printf("INTEREST:\n");
+                                        for (int p = 0; p < interests_len; p++) {
+                                            printf("%s ", interests[p].name);
+                                            for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                                printf("%d:", interests[p].state_fd[q].fd);
+                                                switch (interests[p].state_fd[q].state)
+                                                {
+                                                case WAIT:
+                                                    printf("ESPERA ");
+                                                    break;
+                                                
+                                                case CLOSE:
+                                                printf("FECHADO ");
+                                                break;
+    
+                                                case ANSWER:
+                                                printf("RESPOSTA ");
+                                                break;
+                                                
+                                                default:
+                                                    break;
+                                                }
+                                            }
+                                            printf("\n");
+                                        }
+                                    }
+                                    printf("%s %d:FECHADO\n", name, neigh_addr_fd[i].fd);
+                                
                                 }
 
                                 else {
@@ -862,7 +986,8 @@ int main(int argc, char *argv[]) {
                                     }
                                 
                                     if (j >= interests_len) {
-
+                                        // interest not found
+                                        // create interest table entry
                                         if (interests_len == MAX_INTEREST) {
                                             error("ERROR: número máximo de interesses atingido");
                                         }
@@ -887,9 +1012,42 @@ int main(int argc, char *argv[]) {
                 
                                         interests_len++;
 
+                                        // print interest table
+                                        if (interests_len == 0) {
+                                            printf("INTEREST: NULL\n");
+                                        }
+                                        else {
+                                            printf("INTEREST:\n");
+                                            for (int p = 0; p < interests_len; p++) {
+                                                printf("%s ", interests[p].name);
+                                                for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                                    printf("%d:", interests[p].state_fd[q].fd);
+                                                    switch (interests[p].state_fd[q].state)
+                                                    {
+                                                    case WAIT:
+                                                        printf("ESPERA ");
+                                                        break;
+                                                    
+                                                    case CLOSE:
+                                                    printf("FECHADO ");
+                                                    break;
+        
+                                                    case ANSWER:
+                                                    printf("RESPOSTA ");
+                                                    break;
+                                                    
+                                                    default:
+                                                        break;
+                                                    }
+                                                }
+                                                printf("\n");
+                                            }
+                                        }
+
                                     }
 
                                     else {
+                                        // found interest table entry
 
                                         for (k = 0; k < interests[j].state_fd_len; k++) {
                                             if (neigh_addr_fd[i].fd == interests[j].state_fd[k].fd) {
@@ -898,30 +1056,76 @@ int main(int argc, char *argv[]) {
                                         }
 
                                         if (k == interests[j].state_fd_len) {
+                                            // not found descriptor in entry
 
                                             if (k == MAX_NEIGH) {
                                                 error("ERROR: número máximo de interfaces de interesse atingidas");
                                             }
-
+                                            // add new interface to interest
                                             interests[j].state_fd[k].fd = neigh_addr_fd[i].fd;
                                             interests[j].state_fd_len++;
                                         }
 
                                         interests[j].state_fd[k].state = ANSWER;
 
+                                        // print
+
+                                        // am i still waiting?
                                         int wait = 0;
                                         for (k = 0; k < interests[j].state_fd_len; k++) {
                                             if (interests[j].state_fd[k].state == WAIT)
                                                 wait = 1;
                                         }
-
+                                        // if not, send NOOBJECT to all in ANSWER state
                                         if (wait == 0) {
                                             len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                             for (k = 0; k < interests[j].state_fd_len; k++) {
                                                 if (interests[j].state_fd[k].state == ANSWER)
                                                     tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len);
                                             }
+                                            
+                                            // remove interest
+                                            for (; j < interests_len; j++) {
+                                                interests[j] = interests[j + 1];
+                                            }
+
+                                            interests_len--;
+
+                                            // print interest table
+                                            if (interests_len == 0) {
+                                                printf("INTEREST: NULL\n");
+                                            }
+                                            else {
+                                                printf("INTEREST:\n");
+                                                for (int p = 0; p < interests_len; p++) {
+                                                    printf("%s ", interests[p].name);
+                                                    for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                                        printf("%d:", interests[p].state_fd[q].fd);
+                                                        switch (interests[p].state_fd[q].state)
+                                                        {
+                                                        case WAIT:
+                                                            printf("ESPERA ");
+                                                            break;
+                                                        
+                                                        case CLOSE:
+                                                        printf("FECHADO ");
+                                                        break;
+            
+                                                        case ANSWER:
+                                                        printf("RESPOSTA ");
+                                                        break;
+                                                        
+                                                        default:
+                                                            break;
+                                                        }
+                                                    }
+                                                    printf("\n");
+                                                }
+                                            }
+
                                         }
+
+
 
                                     }
 
@@ -949,7 +1153,7 @@ int main(int argc, char *argv[]) {
                         }
 
                         if (j < interests_len) {
-
+                            // found interest table entry
                             // search where the descriptor is in the interest
                             for (k = 0; k < interests[j].state_fd_len; k++) {
 
@@ -959,24 +1163,58 @@ int main(int argc, char *argv[]) {
 
                             }
 
-                            if (k < 0) {
-                                error("ERROR: descritor que enviou OBJECT não está no INTEREST correspondente");
+                            if (k == interests[j].state_fd_len) {
+                                // not found descriptor in entry
+                                printf("ERROR: descritor que enviou OBJECT não está no INTEREST correspondente");
                             }
                             
                             snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
                             num_strings_cache++;
 
+                            // send to all waiting ANSWER
                             len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
                             for (k = 0; k < interests[j].state_fd_len; k++) {
                                 if (interests[j].state_fd[k].state == ANSWER)
                                     tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len);
                             }
 
+                            // remove interest
                             for (; j < interests_len; j++) {
                                 interests[j] = interests[j + 1];
                             }
 
                             interests_len--;
+
+                            if (interests_len == 0) {
+                                printf("INTEREST: NULL\n");
+                            }
+                            else {
+                                printf("INTEREST:\n");
+                                for (int p = 0; p < interests_len; p++) {
+                                    printf("%s ", interests[p].name);
+                                    for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                        printf("%d:", interests[p].state_fd[q].fd);
+                                        switch (interests[p].state_fd[q].state)
+                                        {
+                                        case WAIT:
+                                            printf("ESPERA ");
+                                            break;
+                                        
+                                        case CLOSE:
+                                        printf("FECHADO ");
+                                        break;
+
+                                        case ANSWER:
+                                        printf("RESPOSTA ");
+                                        break;
+                                        
+                                        default:
+                                            break;
+                                        }
+                                    }
+                                    printf("\n");
+                                }
+                            }
 
                         }
 
@@ -985,28 +1223,32 @@ int main(int argc, char *argv[]) {
                     else if (strncmp(neigh_addr_fd[i].buffer + next_newline, "NOOBJECT", 8) == 0) {
                         // NOOBJECT
                         char name[NAME_BUFF_SIZE];
-                        int j;
+                        int j = 0;
                         int k = 0;
 
                         sscanf(neigh_addr_fd[i].buffer, "NOOBJECT %s\n", name);
 
                         for (j = 0; j < interests_len; j++) {
                             if (strncmp(interests[j].name, name, NAME_BUFF_SIZE) == 0) {
-                                for (k = 0; k < interests[j].state_fd_len; k++) {
-                                    if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd)
-                                        break;
-                                }
-                                if (k >= interests[j].state_fd_len) {
-                                    error("ERROR: NOOBJECT recebido por descritor não associado");
-                                }
+                                break;
                             }
-                            break;
                         }
 
                         if (j < interests_len) {
+                            // found interest table entry
+                            for (k = 0; k < interests[j].state_fd_len; k++) {
+                                if (interests[j].state_fd[k].fd == neigh_addr_fd[i].fd) {
+                                    break;
+                                }
+                            }
+                            if (k == interests[j].state_fd_len) {
+                                printf("ERROR: NOOBJECT recebido por descritor não associado");
+                                continue;
+                            }
 
                             interests[j].state_fd[k].state = CLOSE;
 
+                            // am i still waiting for any descriptor?
                             int wait = 0;
                             for (k = 0; k < interests[j].state_fd_len; k++) {
                                 if (interests[j].state_fd[k].state == WAIT)
@@ -1014,6 +1256,8 @@ int main(int argc, char *argv[]) {
                             }
 
                             if (wait == 0) {
+                                // if not
+                                // send NOOBJECT to all in ANSWER state
                                 len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                 for (k = 0; k < interests[j].state_fd_len; k++) {
                                     if (interests[j].state_fd[k].state == ANSWER) {
@@ -1021,12 +1265,45 @@ int main(int argc, char *argv[]) {
                                     }
                                 }
 
+                                // delete interest table entry
                                 for (; j < interests_len; j++) {
                                     interests[j] = interests[j + 1];
                                 }
                                 interests_len--;
 
                                 printf("ERROR: não foi encontrado %s na rede.\n", name);
+
+                            }
+
+                            if (interests_len == 0) {
+                                printf("INTEREST: NULL\n");
+                            }
+                            else {
+                                printf("INTEREST:\n");
+                                for (int p = 0; p < interests_len; p++) {
+                                    printf("%s ", interests[p].name);
+                                    for (int q = 0; q < interests[p].state_fd_len; q++) {
+                                        printf("%d:", interests[p].state_fd[q].fd);
+                                        switch (interests[p].state_fd[q].state)
+                                        {
+                                        case WAIT:
+                                            printf("ESPERA ");
+                                            break;
+                                        
+                                        case CLOSE:
+                                        printf("FECHADO ");
+                                        break;
+
+                                        case ANSWER:
+                                        printf("RESPOSTA ");
+                                        break;
+                                        
+                                        default:
+                                            break;
+                                        }
+                                    }
+                                    printf("\n");
+                                }
                             }
 
                         }
@@ -1037,13 +1314,17 @@ int main(int argc, char *argv[]) {
                             printf("ERROR: Envio de comando errado por parte da vizinho interno");
                     }
 
+                    // next_newline is 
                     next_newline = strchr(neigh_addr_fd[i].buffer + next_newline, '\n') - neigh_addr_fd[i].buffer + 1;
 
                 }
 
                 if (seperated == 1) {
                     // copy the rest of the command to the beginning of the buffer
-                    strncpy(neigh_addr_fd[i].buffer, neigh_addr_fd[i].buffer + last_newline, n - last_newline);
+                    // copy first to an auxiliary buffer to avoid colisions while copying
+                    char aux_buffer[NEIGH_BUFF_SIZE];
+                    snprintf(aux_buffer, n - last_newline, "%s", neigh_addr_fd[i].buffer + last_newline);
+                    snprintf(neigh_addr_fd[i].buffer, n - last_newline, "%s", aux_buffer);
                     neigh_addr_fd[i].buffer_len = n - last_newline;
                     seperated = 0;
                 }
