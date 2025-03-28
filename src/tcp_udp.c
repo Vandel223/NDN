@@ -114,9 +114,16 @@ int tcp_receive(int sockfd, char *buffer, int buffer_size) {
 // UDP create the socket
 int create_udp_client_socket() {
     int sockfd;
+    // timeout timer
+    struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
 
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         error("ERROR: socket UDP falhou");
+    }
+
+    // socket options
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        error("ERROR: setsockopt falhou");
     }
 
     return sockfd;
@@ -150,8 +157,21 @@ void udp_send(int sockfd, struct addrinfo *res, const char *message, int message
 // UDP receive
 void udp_receive(int sockfd, char *buffer, int buffer_size) {
 
-    int n = recvfrom(sockfd, buffer, buffer_size - 1, 0, NULL, NULL);
-        if( n == -1)  error("ERROR: recvfrom falhou");   //Error
+    int n;
+    int num_timeouts = 0;
+
+    while ((n = recvfrom(sockfd, buffer, buffer_size - 1, 0, NULL, NULL)) == -1 && num_timeouts < 5) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            // Some unexpected error happened.
+            error("ERROR: recvfrom falhou");
+        }
+        num_timeouts++;
+        // Otherwise it was a timeout, just continue trying.
+    }
+
+    if (num_timeouts == 5) {
+        error("ERROR: recvfrom deu timeout");
+    }
 
     buffer[n] = '\0';
 }

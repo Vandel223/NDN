@@ -104,6 +104,7 @@ int main(int argc, char *argv[]) {
     // TCP
     int listening_fd = 0, newsock_fd;
     char out_tcp_buffer[TCP_BUFF_SIZE], in_tcp_buffer[TCP_BUFF_SIZE];
+    int in_tcp_buffer_offset = 0;
 
     // UDP
     int registered = 0;
@@ -167,8 +168,8 @@ int main(int argc, char *argv[]) {
 
     else {
         // default
-        snprintf(server_addr.ip, IP_LEN, "%s", "193.136.138.142");
-        snprintf(server_addr.port, PORT_LEN, "%s", "59000");
+        snprintf(server_addr.ip, IP_LEN, "%s", UDP_SV_IP);
+        snprintf(server_addr.port, PORT_LEN, "%s", UDP_SV_PORT);
 
     }
 
@@ -222,17 +223,21 @@ int main(int argc, char *argv[]) {
                     sscanf(stdin_buffer, "join %3s", net);
                 }
 
-                // TCP listening socket;
-                listening_fd = create_tcp_server_socket(own_addr.port);
-
                 // UDP socket
                 udpsock_fd = create_udp_client_socket();
                 // UDP server info
                 res_udp = get_udp_server_info(server_addr.ip, server_addr.port);
                 // get NODES on net
                 len = snprintf(udp_buffer, UDP_BUFF_SIZE, "NODES %s", net);    // mandar as net para o buffer
+
                 udp_send(udpsock_fd, res_udp, udp_buffer, len);
                 udp_receive(udpsock_fd, udp_buffer, UDP_BUFF_SIZE);
+                if (strncmp(udp_buffer, "NODESLIST ", 10) != 0)
+                    error("ERROR: pedido de lista de nós na rede do servidor falhou");
+
+                // TCP listening socket;
+                listening_fd = create_tcp_server_socket(own_addr.port);
+                created = 1;
 
                 // next '\n'
                 char *tok_udp = strchr(udp_buffer, '\n');
@@ -292,9 +297,8 @@ int main(int argc, char *argv[]) {
                 udp_receive(udpsock_fd, udp_buffer, UDP_BUFF_SIZE);
                 if (strncmp(udp_buffer, "OKREG", 5) != 0)
                     error("ERROR: registo de nó no servidor de nós falhou");
-                
+
                 registered = 1;
-                created = 1;
 
             } else if ((abvr = 0, strncmp(stdin_buffer, "direct join ", 12) == 0) || (abvr = 1, strncmp(stdin_buffer, "dj ", 3) == 0)) {
                 // direct join
@@ -610,13 +614,14 @@ int main(int argc, char *argv[]) {
                         neigh_addr_fd[i].fd = 0;
                     }
 
+                    // reset variables
                     memset(&ext_addr, 0, sizeof(Node_Addr));
                     memset(&safe_addr, 0, sizeof(Node_Addr));
                     for (int i = 0; i < neigh_len; i++) {
                         memset(&neigh_addr_fd[i], 0, sizeof(Node_Addr_FD));
                     }
                     created = 0;
-
+                    in_tcp_buffer_offset = 0;
                     neigh_len = 0;
                     num_strings_cache = 0;
                     interests_len = 0;
@@ -671,15 +676,16 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < neigh_len; i++) {
             if (FD_ISSET(neigh_addr_fd[i].fd, &set_fd)) {
                 // descriptor UP for reading
-
                 // is it the external node
                 int is_ext = cmp_Node_Addr(ext_addr, neigh_addr_fd[i].node_addr);
                 // decrement select counter
                 select_cntr--;
 
-                int len = 0, len_temp = 0;
+                int next_newline = 0;
+                int len = 0;
+                int seperated = 0;
                 // read from descriptor
-                int n = tcp_receive(neigh_addr_fd[i].fd, in_tcp_buffer, TCP_BUFF_SIZE);
+                int n = tcp_receive(neigh_addr_fd[i].fd, in_tcp_buffer + in_tcp_buffer_offset, TCP_BUFF_SIZE - in_tcp_buffer_offset);
                 printf("%s", in_tcp_buffer);
 
                 if (n == 0) {
@@ -701,14 +707,14 @@ int main(int argc, char *argv[]) {
                             cpy_Node_Addr(ext_addr, safe_addr);
 
                             // send ENTRY
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
-                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
 
                             for (int j = 0; j < neigh_len; j++) {
                                 if (j != i) {
                                     // send SAFE
-                                    len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
-                                    tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len_temp);
+                                    len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                                    tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
                                 }
                             }
 
@@ -728,13 +734,13 @@ int main(int argc, char *argv[]) {
                                 cpy_Node_Addr(ext_addr, neigh_addr_fd[the_chosen_one].node_addr);
 
                                 // send ENTRY
-                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
-                                tcp_send(neigh_addr_fd[the_chosen_one].fd, out_tcp_buffer, len_temp);
+                                len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
+                                tcp_send(neigh_addr_fd[the_chosen_one].fd, out_tcp_buffer, len);
 
                                 for (int j = 0; j < neigh_len; j++) {
                                     // send SAFE
-                                    len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
-                                    tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len_temp);
+                                    len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                                    tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
                                 }
 
                             }
@@ -749,47 +755,69 @@ int main(int argc, char *argv[]) {
 
                 }
 
-                while (len < n) {
-                    if (strncmp(in_tcp_buffer + len, "ENTRY", 5) == 0) {
+                char *check_newline = strrchr(in_tcp_buffer, '\n');
+                if (check_newline == NULL) {
+                    // no '\n' in buffer
+                    in_tcp_buffer_offset += n;
+                    if (in_tcp_buffer_offset >= TCP_BUFF_SIZE - 1) {
+                        // buffer full
+                        error("ERROR: buffer de entrada cheio");
+                    }
+                    continue;
+                }
+
+                int last_newline = strrchr(in_tcp_buffer, '\n') - in_tcp_buffer + 1;
+
+                if (last_newline != n) {
+                    // a command was seperated in two buffers
+                    seperated = 1;
+                }
+                else {
+                    seperated = 0;
+                    in_tcp_buffer_offset = 0;
+                }
+
+                while (next_newline < last_newline) {
+                    if (strncmp(in_tcp_buffer + next_newline, "ENTRY", 5) == 0) {
                         // ENTRY
                         // get internal address
-                        sscanf(in_tcp_buffer + len, "ENTRY %s %s\n", neigh_addr_fd[i].node_addr.ip, neigh_addr_fd[i].node_addr.port);
+                        sscanf(in_tcp_buffer + next_newline, "ENTRY %s %s\n", neigh_addr_fd[i].node_addr.ip, neigh_addr_fd[i].node_addr.port);
 
                         if (cmp_Node_Addr(ext_addr, own_addr)) {
                             // don't have an external neighbor
                             // (ext is own by default)
                             cpy_Node_Addr(ext_addr, neigh_addr_fd[i].node_addr);
                             // send SAFE (1st answer)
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
                             // send ENTRY (2nd send my own command)
-                            len_temp += snprintf(out_tcp_buffer + len_temp, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
-                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                            len += snprintf(out_tcp_buffer + len, TCP_BUFF_SIZE, "ENTRY %s %s\n", own_addr.ip, own_addr.port);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
 
                         }
 
                         else {
                             // ext is not own
                             // send SAFE
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
-                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "SAFE %s %s\n", ext_addr.ip, ext_addr.port);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
 
                         }
                     }
 
-                    else if (strncmp(in_tcp_buffer + len, "SAFE", 4) == 0) {
+                    else if (strncmp(in_tcp_buffer + next_newline, "SAFE", 4) == 0) {
                         // SAFE
                         // get safeguard address
-                        sscanf(in_tcp_buffer + len, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
+                        sscanf(in_tcp_buffer + next_newline, "SAFE %s %s\n", safe_addr.ip, safe_addr.port);
     
                     } 
 
-                    else if (strncmp(in_tcp_buffer + len, "INTEREST", 8) == 0) {
+                    else if (strncmp(in_tcp_buffer + next_newline, "INTEREST", 8) == 0) {
                         // INTEREST
                         char name [NAME_BUFF_SIZE];
                         int j;
                         int k;
                         // get name
-                        sscanf(in_tcp_buffer + len, "INTEREST %s\n", name);
+                        sscanf(in_tcp_buffer + next_newline, "INTEREST %s\n", name);
 
                         for (j = 0; j < num_strings_cache; j++) {
                             if (strncmp(cache[j], name, NAME_BUFF_SIZE) == 0) {
@@ -799,8 +827,8 @@ int main(int argc, char *argv[]) {
 
                         if (j < num_strings_cache) {
                             // found
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", cache[j]);
-                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", cache[j]);
+                            tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
                         }
                         else {
 
@@ -812,16 +840,16 @@ int main(int argc, char *argv[]) {
 
                             if (j < objects_len) {
                                 // found
-                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
-                                tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                                len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", objects[i]);
+                                tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
                             }
 
                             else {
                                 // not found
 
                                 if (neigh_len == 1) {
-                                    len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
-                                    tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len_temp);
+                                    len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                    tcp_send(neigh_addr_fd[i].fd, out_tcp_buffer, len);
                                 }
 
                                 else {
@@ -842,10 +870,10 @@ int main(int argc, char *argv[]) {
                                         snprintf(interests[interests_len].name, NAME_BUFF_SIZE, "%s", name);
                                         interests[interests_len].state_fd_len = 0;
                                         // prepare to send INTEREST to all but current neighbor
-                                        int len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
+                                        int next_newline = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "INTEREST %s\n", name);
                                         for (j = 0; j < neigh_len; j++) {
                                             if (i != j) {
-                                                tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, len);
+                                                tcp_send(neigh_addr_fd[j].fd, out_tcp_buffer, next_newline);
                                                 interests[interests_len].state_fd[interests[interests_len].state_fd_len].fd = neigh_addr_fd[j].fd;
                                                 interests[interests_len].state_fd[interests[interests_len].state_fd_len].state = WAIT;
                                                 interests[interests_len].state_fd_len++;
@@ -887,10 +915,10 @@ int main(int argc, char *argv[]) {
                                         }
 
                                         if (wait == 0) {
-                                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                             for (k = 0; k < interests[j].state_fd_len; k++) {
                                                 if (interests[j].state_fd[k].state == ANSWER)
-                                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len);
                                             }
                                         }
 
@@ -904,7 +932,7 @@ int main(int argc, char *argv[]) {
 
                     }
 
-                    else if (strncmp(in_tcp_buffer + len, "OBJECT", 6) == 0) {
+                    else if (strncmp(in_tcp_buffer + next_newline, "OBJECT", 6) == 0) {
                         // OBJECT
                         char name[NAME_BUFF_SIZE];
                         int j;
@@ -937,10 +965,10 @@ int main(int argc, char *argv[]) {
                             snprintf(cache[num_strings_cache], NAME_BUFF_SIZE, "%s", name);
                             num_strings_cache++;
 
-                            len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
+                            len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "OBJECT %s\n", name);
                             for (k = 0; k < interests[j].state_fd_len; k++) {
                                 if (interests[j].state_fd[k].state == ANSWER)
-                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                    tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len);
                             }
 
                             for (; j < interests_len; j++) {
@@ -953,7 +981,7 @@ int main(int argc, char *argv[]) {
 
                     }
 
-                    else if (strncmp(in_tcp_buffer + len, "NOOBJECT", 8) == 0) {
+                    else if (strncmp(in_tcp_buffer + next_newline, "NOOBJECT", 8) == 0) {
                         // NOOBJECT
                         char name[NAME_BUFF_SIZE];
                         int j;
@@ -985,10 +1013,10 @@ int main(int argc, char *argv[]) {
                             }
 
                             if (wait == 0) {
-                                len_temp = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
+                                len = snprintf(out_tcp_buffer, TCP_BUFF_SIZE, "NOOBJECT %s\n", name);
                                 for (k = 0; k < interests[j].state_fd_len; k++) {
                                     if (interests[j].state_fd[k].state == ANSWER) {
-                                        tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len_temp);
+                                        tcp_send(interests[j].state_fd[k].fd, out_tcp_buffer, len);
                                     }
                                 }
 
@@ -1005,11 +1033,18 @@ int main(int argc, char *argv[]) {
                     }
 
                     else {
-                            error("ERROR: Envio de comando errado por parte da vizinho interno");
+                            printf("ERROR: Envio de comando errado por parte da vizinho interno");
                     }
 
-                    len = strchr(in_tcp_buffer + len, '\n') - in_tcp_buffer + 1;
+                    next_newline = strchr(in_tcp_buffer + next_newline, '\n') - in_tcp_buffer + 1;
 
+                }
+
+                if (seperated == 1) {
+                    // copy the rest of the command to the beginning of the buffer
+                    strncpy(in_tcp_buffer, in_tcp_buffer + last_newline, n - last_newline);
+                    in_tcp_buffer_offset = n - last_newline;
+                    seperated = 0;
                 }
 
                 if (select_cntr == 0) {

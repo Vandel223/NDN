@@ -37,6 +37,9 @@
 #define IP_LEN 16
 #define PORT_LEN 6
 
+#define UDP_SV_IP "193.136.138.142"
+#define UDP_SV_PORT "59000"
+
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
 typedef enum __State {
