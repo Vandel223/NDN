@@ -685,7 +685,7 @@ int main(int argc, char *argv[]) {
                 int len = 0;
                 int seperated = 0;
                 // read from descriptor
-                int n = tcp_receive(neigh_addr_fd[i].fd, neigh_addr_fd[i].buffer + neigh_addr_fd[i].buffer_len, TCP_BUFF_SIZE - neigh_addr_fd[i].buffer_len);
+                int n = tcp_receive(neigh_addr_fd[i].fd, neigh_addr_fd[i].buffer + neigh_addr_fd[i].buffer_len, NEIGH_BUFF_SIZE - neigh_addr_fd[i].buffer_len);
                 printf("%s", neigh_addr_fd[i].buffer);
 
                 if (n == 0) {
@@ -759,7 +759,7 @@ int main(int argc, char *argv[]) {
                 if (check_newline == NULL) {
                     // no '\n' in buffer
                     neigh_addr_fd[i].buffer_len += n;
-                    if (neigh_addr_fd[i].buffer_len >= TCP_BUFF_SIZE - 1) {
+                    if (neigh_addr_fd[i].buffer_len >= NEIGH_BUFF_SIZE - 1) {
                         // buffer full
                         // reset offset, as there is no way the buffer does not have enough space for a command
                         neigh_addr_fd[i].buffer_len = 0;
