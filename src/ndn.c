@@ -761,7 +761,8 @@ int main(int argc, char *argv[]) {
                     in_tcp_buffer_offset += n;
                     if (in_tcp_buffer_offset >= TCP_BUFF_SIZE - 1) {
                         // buffer full
-                        error("ERROR: buffer de entrada cheio");
+                        // reset offset, as there is no way the buffer does not have enough space for a command
+                        in_tcp_buffer_offset = 0;
                     }
                     continue;
                 }
