@@ -403,8 +403,8 @@ int main(int argc, char *argv[]) {
                 if (created == 0) {
                     printf("ERROR: nó não criado\n");
                 }
-                else if(num_strings_cache <= 0){
-                    printf("ERROR: cache vazia\n");
+                else if(objects_len <= 0){
+                    printf("ERROR: objetos vazios\n");
                 }
                 else {
 
